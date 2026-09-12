@@ -12,7 +12,7 @@
     "start": "npm run build && node scripts/start.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src electron scripts index.html vite.config.ts tsconfig.json package.json",
-    "test:ui": "npm run build && node scripts/smoke.mjs"
+    "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -22,12 +22,14 @@
     "@fontsource/geist-mono": "^5.2.7",
     "lucide-react": "^0.577.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.3.0",
     "playwright-core": "^1.58.2",
