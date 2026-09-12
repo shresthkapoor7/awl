@@ -28,7 +28,7 @@ An optional 3D office overview will show agents' activity and highlight where at
 
 Interactive Electron UI prototype. The workspace includes an agent sidebar, chat, a simulated browser, a human handoff, and a capability preview. All agent responses and browser content are sample data; no websites are visited, no AI calls are made, and no automation code is generated. Session changes stay in memory and reset on reload.
 
-The 3D overview and execution backend are not implemented yet.
+The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Poses reflect the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
 
 ## Run locally
 
@@ -56,6 +56,8 @@ For a browser-only preview, run `npm run dev:web` and open the local URL printed
 
 You can also switch agents, search sessions, create a new agent, and send messages to explore the conversation layout. Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys. The browser toolbar's reset button restarts the selected demo.
 
+The office supports orbit, zoom, reset, and reduced motion. It stops rendering when closed or when the app is hidden. If WebGL is unavailable, the agent list remains usable. Scene assets ship locally.
+
 ## Checks
 
 ```sh
@@ -63,4 +65,4 @@ npm run build
 npm run test:ui
 ```
 
-The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, panel resizing and collapse, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
+The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, panel resizing and collapse, the 3D overview, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.

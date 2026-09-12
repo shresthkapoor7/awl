@@ -1,5 +1,7 @@
 import {
   Check,
+  Boxes,
+  MessageSquare,
   ChevronRight,
   Command,
   FileText,
@@ -11,14 +13,24 @@ import {
   Search,
   Workflow,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { initialAgents, phaseLabel, type Agent } from "./demo";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
 import { IconButton, Mark, StatusDot } from "./components/ui";
 
+const Overview = lazy(() => import("./components/overview/Overview"));
+
 export function App() {
+  const [view, setView] = useState<"chat" | "overview">("chat");
   const [agents, setAgents] = useState<Agent[]>(() =>
     structuredClone(initialAgents),
   );
@@ -53,6 +65,7 @@ export function App() {
     );
   }
   function newAgent() {
+    setView("chat");
     const id = crypto.randomUUID();
     setAgents((current) => [
       ...current,
@@ -72,9 +85,12 @@ export function App() {
     setMobileView("chat");
   }
   function selectAgent(id: string) {
-    setSelectedId(id);
-    setTab("browser");
+    setView("chat");
     setMobileView("chat");
+    if (id !== selectedId) {
+      setSelectedId(id);
+      setTab("browser");
+    }
   }
   function takeControl() {
     updateAgent({ phase: "human" });
@@ -190,9 +206,53 @@ export function App() {
         <div className="titlebar-center">
           <span>Workspace</span>
           <ChevronRight size={12} />
-          <span>{agent.name}</span>
+          <span>{view === "overview" ? "Overview" : agent.name}</span>
+        </div>
+        <div
+          className="workspace-tabs"
+          role="tablist"
+          aria-label="Workspace views"
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
+              return;
+            event.preventDefault();
+            const next =
+              event.key === "Home"
+                ? "chat"
+                : event.key === "End"
+                  ? "overview"
+                  : view === "chat"
+                    ? "overview"
+                    : "chat";
+            setView(next);
+            document.getElementById(`${next}-tab`)?.focus();
+          }}
+        >
+          <button
+            id="chat-tab"
+            role="tab"
+            aria-selected={view === "chat"}
+            aria-controls="chat-view"
+            tabIndex={view === "chat" ? 0 : -1}
+            onClick={() => setView("chat")}
+          >
+            <MessageSquare size={14} />
+            Chat
+          </button>
+          <button
+            id="overview-tab"
+            role="tab"
+            aria-selected={view === "overview"}
+            aria-controls="overview-view"
+            tabIndex={view === "overview" ? 0 : -1}
+            onClick={() => setView("overview")}
+          >
+            <Boxes size={15} />
+            Overview
+          </button>
         </div>
         <IconButton
+          style={{ visibility: view === "overview" ? "hidden" : "visible" }}
           label={browserOpen ? "Hide browser" : "Show browser"}
           onClick={() => {
             setBrowserOpen(!browserOpen);
@@ -311,6 +371,10 @@ export function App() {
         </aside>
       )}
       <main
+        id="chat-view"
+        role="tabpanel"
+        aria-labelledby="chat-tab"
+        hidden={view !== "chat"}
         className={`workspace mobile-${mobileView} ${browserOpen ? "" : "browser-collapsed"}`}
       >
         <div className="mobile-view-switch">
@@ -365,6 +429,25 @@ export function App() {
           />
         </div>
       </main>
+      {view === "overview" && (
+        <Suspense
+          fallback={
+            <div className="overview-loading" role="status">
+              Opening overview…
+            </div>
+          }
+        >
+          <Overview
+            agents={agents}
+            onSelect={(id) => {
+              selectAgent(id);
+              requestAnimationFrame(() =>
+                document.getElementById("message")?.focus(),
+              );
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
