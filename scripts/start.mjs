@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
-import electron from "electron";
+import { prepareElectron } from "./electron-runtime.mjs";
 
+const electron = await prepareElectron();
 const environment = { ...process.env };
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.AWL_DEV_URL;

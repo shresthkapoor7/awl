@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
-import executablePath from "electron";
+import { prepareElectron } from "./electron-runtime.mjs";
 
+const executablePath = await prepareElectron();
 const environment = { ...process.env };
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.AWL_DEV_URL;
@@ -20,6 +22,29 @@ try {
   await page
     .getByRole("heading", { name: "Member onboarding", exact: true })
     .waitFor();
+  // Check the OS-visible name, not just Electron's internal app.getName().
+  if (process.platform === "darwin") {
+    const name = execFileSync(
+      "/usr/bin/osascript",
+      [
+        "-l",
+        "JavaScript",
+        "-e",
+        `ObjC.import('AppKit');
+      function run(argv) {
+        var apps = $.NSWorkspace.sharedWorkspace.runningApplications;
+        for (var i = 0; i < apps.count; i++) {
+          var app = apps.objectAtIndex(i);
+          if (app.processIdentifier === Number(argv[0])) return ObjC.unwrap(app.localizedName);
+        }
+        throw Error('App not found');
+      }`,
+        String(app.process().pid),
+      ],
+      { encoding: "utf8", timeout: 10000 },
+    ).trim();
+    assert.equal(name, "awl");
+  }
   await page.evaluate(() => document.fonts.ready);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/awl-desktop.png" });

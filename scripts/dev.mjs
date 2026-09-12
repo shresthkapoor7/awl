@@ -1,7 +1,8 @@
 import { createServer } from "vite";
 import { spawn } from "node:child_process";
-import electron from "electron";
+import { prepareElectron } from "./electron-runtime.mjs";
 
+const electron = await prepareElectron();
 const server = await createServer();
 await server.listen();
 const address = server.httpServer.address();
