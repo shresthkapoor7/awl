@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("awlAgent", {
   state: () => ipcRenderer.invoke("agent:state"),
+  create: (id) => ipcRenderer.invoke("agent:create", id),
+  capabilities: () => ipcRenderer.invoke("agent:capabilities"),
   send: (id, text) => ipcRenderer.invoke("agent:send", { id, text }),
   stop: (id) => ipcRenderer.invoke("agent:stop", id),
   subscribe: (listener) => {

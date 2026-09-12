@@ -28,10 +28,11 @@ An optional 3D office overview will show agents' activity and highlight where at
 
 Electron workspace with a live embedded Chromium browser. Enter a website in the address bar and use it directly beside chat. Each agent has its own isolated browser session; tabs, forms, navigation history, and cookies stay alive when switching agents, collapsing the pane, or opening the office. Popups open as tabs in the same session, including opener-based sign-in flows.
 
-New chats use GPT-5.6 Terra through the OpenAI Responses API and the official SDK. Terra can name a chat, open and navigate its browser, inspect DOM elements and frames, capture viewport screenshots, interact with controls, wait for page changes, and write/read versioned capability drafts. Tool activity appears in chat. The built-in sample chats, handoff, and capability replay remain demos. Browser sessions are held in memory for the current app window and are cleared when it closes. Browser views survive a UI reload, and live chats reconnect to their in-memory state after a UI reload. Live conversations are not persisted across app restarts. Capability drafts are saved under the app’s local user-data directory.
+New chats use GPT-5.6 Terra through the OpenAI Responses API and the official SDK. Terra can name a chat, open and navigate its browser, inspect DOM elements and frames, capture viewport screenshots, interact with controls, wait for page changes, and write/read versioned capability drafts. The workspace starts with an empty chat; messages, tool activity, and session status come from the live agent. Browser sessions are held in memory for the current app window and are cleared when it closes. Browser views survive a UI reload, and live chats reconnect to their in-memory state after a UI reload. Live conversations are not persisted across app restarts. Capability drafts are saved under the app’s local user-data directory.
 
-The **Capabilities** tab lists example workflows. Enter a member ID and select **Run** to open a fresh chat with its own browser session, pinned capability version, inputs, and simulated run status. Each launch creates a separate agent; it does not restart the discovery conversation. These examples are not generated or executable capabilities yet.
-The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Agents sit with articulated legs, type during replay, pace when waiting, and gather to gossip at the water cooler after completion. The room has warm wood, daylight, and leafy plants. Motion reflects the agent’s current state; the overview does not start extra work. Live agents also appear in the office, with activity reflecting their tool run. The deterministic execution backend is not implemented yet.
+The **Capabilities** tab lists saved capability drafts with their latest version and contract. Drafts are inspectable, but compilation and execution are not implemented yet.
+
+The **Overview** tab shows the same sessions in a 3D office. Select a workstation, label, or list entry to open its existing chat. Agents work during a model turn, ask for attention when a turn stops or fails, and gather at the water cooler when a turn finishes. New sessions wait at their desks. The overview reflects session activity without starting extra work.
 
 ## Run locally
 
@@ -42,7 +43,7 @@ npm ci
 npm run dev
 ```
 
-Set `OPENAI_API_KEY` in the ignored project-root `.env`, then restart Electron. Select **New agent** and send a website and a goal. The default model is `gpt-5.6-terra`; `OPENAI_MODEL` can override it. Credentials are read only in the main process. The UI-only preview and existing example chats remain demos.
+Set `OPENAI_API_KEY` in the ignored project-root `.env`, then restart Electron. Select **New agent** and send a website and a goal. The default model is `gpt-5.6-terra`; `OPENAI_MODEL` can override it. Credentials are read only in the main process. The UI-only preview cannot run the agent or embedded browser.
 
 To run the built UI in Electron:
 
@@ -52,12 +53,12 @@ npm start
 
 For a UI-only preview, run `npm run dev:web` and open the local URL printed by Vite. The embedded browser requires Electron. Renderer changes reload automatically during `npm run dev`; restart that command after changing Electron or preload code.
 
-## Explore the prototype
+## Use the workspace
 
 1. Enter a website address in the browser pane; use Back, Forward, Reload, and the tab controls to browse. Cmd/Ctrl+L focuses the address bar.
 2. Switch agents to browse in another isolated session, then return to find your original page intact.
-3. Open **Overview** or **Capability**, or collapse the browser, without losing the live session.
-4. Use the chat's **Take control**, **Resume with awl**, and capability replay buttons to explore the separate demo flow. These buttons do not execute steps on your website.
+3. Send a goal in chat to start the agent; inspect its tool activity or select **Stop** to cancel further work.
+4. Open **Overview** or **Capabilities**, or collapse the browser, without losing the live session.
 
 Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys.
 
@@ -74,7 +75,7 @@ npm run test:ui
 npm run test:tools
 ```
 
-The UI check launches Electron and exercises live browsing against a local test site, navigation, popup sign-in, session isolation, form preservation, tab lifecycle, native view bounds, error recovery, the demo chat flow, and the office overview. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
+The UI check launches Electron and exercises live browsing against a local test site, navigation, popup sign-in, session isolation, form preservation, tab lifecycle, native view bounds, error recovery, empty and live chat states, UI reloads, and the office overview. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
 
 ## Agent tools
 

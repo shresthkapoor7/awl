@@ -17,7 +17,17 @@ export type AgentChat = {
   tools: ToolActivity[];
   error: string | null;
 };
+export type SavedCapability = {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  sourceChatId: string;
+  contract: string;
+};
 export type AgentBridge = {
+  create: (id: string) => Promise<{ chat?: AgentChat; error?: string }>;
+  capabilities: () => Promise<{ drafts: SavedCapability[]; error?: string }>;
   state: () => Promise<{ enabled: boolean; model: string; chats: AgentChat[] }>;
   send: (id: string, text: string) => Promise<{ error?: string }>;
   stop: (id: string) => Promise<void>;

@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import { join } from "node:path";
 import OpenAI from "openai";
+import { readCapabilityCatalog } from "./capability-catalog.cjs";
 import { AgentRuntime, TERRA_MODEL } from "./agent-runtime.cjs";
 import type { BrowserAccess } from "./tools/core.cjs";
 export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
@@ -46,6 +47,24 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     authorize(event);
     return { enabled, model, chats: runtime.list() };
   });
+  ipcMain.handle("agent:create", (event, id) => {
+    authorize(event);
+    if (typeof id !== "string") return { error: "Invalid chat identity." };
+    const result = runtime.create(id);
+    return "status" in result ? { chat: result } : result;
+  });
+  ipcMain.handle("agent:capabilities", async (event) => {
+    authorize(event);
+    try {
+      return {
+        drafts: await readCapabilityCatalog(
+          join(app.getPath("userData"), "capabilities"),
+        ),
+      };
+    } catch {
+      return { drafts: [], error: "Could not read saved capabilities." };
+    }
+  });
   ipcMain.handle("agent:send", (event, input) => {
     authorize(event);
     if (!enabled) return { error: "AI is disabled in this test session." };
@@ -63,7 +82,13 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
   });
   window.once("closed", () => {
     runtime.close();
-    for (const name of ["agent:state", "agent:send", "agent:stop"])
+    for (const name of [
+      "agent:state",
+      "agent:create",
+      "agent:capabilities",
+      "agent:send",
+      "agent:stop",
+    ])
       ipcMain.removeHandler(name);
   });
 }

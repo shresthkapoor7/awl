@@ -1,3 +1,4 @@
+import { readCapabilityCatalog } from "../dist-electron/electron/capability-catalog.cjs";
 import { capabilityRead } from "../dist-electron/electron/tools/capability-read.cjs";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
@@ -74,6 +75,11 @@ try {
     (await read({ id: "lookup", version: 9 })).error.code,
     "CAPABILITY_NOT_FOUND",
   );
+  const catalog = await readCapabilityCatalog(directory);
+  assert.equal(catalog.length, 1);
+  assert.equal(catalog[0].version, 2);
+  assert.equal(catalog[0].sourceChatId, "one");
+  assert.equal(JSON.parse(catalog[0].contract).status, "draft");
   console.log(
     "Passed: capability schema, parameterization, path constraints, immutable versions, conflicting writes.",
   );

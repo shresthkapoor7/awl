@@ -46,16 +46,9 @@ export class AgentRuntime {
   private publish(session: Session) {
     this.options.publish(structuredClone(session.chat));
   }
-  send(id: string, text: string): { error?: string } {
-    if (
-      !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
-      typeof text !== "string" ||
-      !text.trim() ||
-      text.length > 16000
-    )
-      return { error: "Use a message between 1 and 16000 characters." };
-    if (!this.options.client)
-      return { error: "Add OPENAI_API_KEY to .env and restart awl." };
+  create(id: string): AgentChat | { error: string } {
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id))
+      return { error: "Invalid chat identity." };
     let session = this.sessions.get(id);
     if (!session) {
       if (this.sessions.size >= 32)
@@ -74,6 +67,21 @@ export class AgentRuntime {
       };
       this.sessions.set(id, session);
     }
+    return structuredClone(session.chat);
+  }
+  send(id: string, text: string): { error?: string } {
+    if (
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
+      typeof text !== "string" ||
+      !text.trim() ||
+      text.length > 16000
+    )
+      return { error: "Use a message between 1 and 16000 characters." };
+    if (!this.options.client)
+      return { error: "Add OPENAI_API_KEY to .env and restart awl." };
+    const created = this.create(id);
+    if (!("status" in created)) return created;
+    const session = this.sessions.get(id)!;
     if (session.controller) return { error: "This agent is already working." };
     if (session.history.length > 500)
       return {

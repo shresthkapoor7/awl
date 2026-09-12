@@ -32,7 +32,7 @@ try {
     window.hide();
   });
   await page
-    .getByRole("heading", { name: "Member onboarding", exact: true })
+    .getByRole("heading", { name: "What’s the task?", exact: true })
     .waitFor();
   const state = await page.evaluate(() => window.awlAgent.state());
   assert.equal(state.model, "gpt-5.6-terra");

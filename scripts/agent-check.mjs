@@ -112,6 +112,10 @@ const blocked = new AgentRuntime({
   publish: () => {},
   client: null,
 });
+assert.equal(blocked.create("draft-one").status, "idle");
+assert.equal(blocked.create("draft-one").id, "draft-one");
+assert.equal(blocked.list().length, 1);
+assert.ok(blocked.create("../invalid").error);
 assert.ok(blocked.send("one", "go").error.includes("OPENAI_API_KEY"));
 const stopped = new AgentRuntime({
   directory: "/unused",

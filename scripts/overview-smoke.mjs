@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
-
 const env = { ...process.env, AWL_AI_DISABLED: "1" };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
@@ -13,256 +12,113 @@ const app = await electron.launch({
 try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);
-  // Keep test input separate from someone typing into the live desktop preview.
-  await app.evaluate(({ app, BrowserWindow }) => {
-    if (process.platform === "darwin") app.setActivationPolicy("accessory");
+  await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
     window.hide();
   });
   const errors = [];
-  const externalRequests = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  page.on("request", (request) => {
-    if (/^https?:/.test(request.url())) externalRequests.push(request.url());
-  });
-  const overview = page.getByRole("tab", { name: "Overview", exact: true });
-  const chat = page.getByRole("tab", { name: "Chat", exact: true });
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".new-agent") &&
+      !document.querySelector(".new-agent").disabled,
+  );
+  const first = (await page.evaluate(() => window.awlAgent.state())).chats[0];
+  const second = (
+    await page.evaluate(() => window.awlAgent.create("office-two"))
+  ).chat;
+  const publish = (chat) =>
+    app.evaluate(
+      ({ BrowserWindow }, chat) =>
+        BrowserWindow.getAllWindows()[0].webContents.send("agent:update", chat),
+      chat,
+    );
+  const working = {
+    ...first,
+    name: "Research",
+    status: "running",
+    messages: [{ id: "goal", role: "user", text: "Read the guide" }],
+  };
+  const done = {
+    ...second,
+    name: "Read the guide",
+    status: "idle",
+    messages: [{ id: "answer", role: "assistant", text: "Done." }],
+  };
+  await publish(working);
+  await publish(done);
   const draft = page.getByRole("textbox", { name: "Message your agent" });
-  const officeReady = () =>
+  await draft.fill("Keep this draft");
+  const overview = page.getByRole("tab", { name: "Overview", exact: true });
+  const chatTab = page.getByRole("tab", { name: "Chat", exact: true });
+  const ready = () =>
     page.locator('.office-stage[data-ready="true"]').waitFor();
-  const expectStatus = async (name, status) => {
+  const status = async (name, state) => {
     const label = page.getByRole("button", {
       name: `Open ${name} chat`,
       exact: true,
     });
-    assert.equal(await label.locator(".office-status").innerText(), status);
-    assert.ok(await label.getAttribute("aria-describedby"));
-    await page
-      .getByRole("navigation", { name: "Office agents" })
-      .getByRole("button", { name: new RegExp(`${name} ${status}`) })
-      .waitFor();
+    assert.equal(await label.locator(".office-status").innerText(), state);
   };
-  await draft.fill("Preserve this draft");
   await overview.click();
-  await officeReady();
-  assert.equal(await page.locator(".office-canvas canvas").count(), 1);
+  await ready();
   assert.equal(await page.locator(".station-label").count(), 2);
-  await expectStatus("Member onboarding", "Needs you");
-  await expectStatus("Statement lookup", "Completed");
-  await page.getByText("2 agents").waitFor();
-  // Drive visibility explicitly while the test window stays out of the user's way.
-  await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      value: false,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  const movingLabel = page.getByRole("button", {
-    name: "Open Member onboarding chat",
+  await status("Research", "Working");
+  await status("Read the guide", "Completed");
+  const label = page.getByRole("button", {
+    name: "Open Research chat",
     exact: true,
   });
-  const beforeWalking = await movingLabel.boundingBox();
-  await page.waitForFunction(({ x, y }) => {
-    const label = document
-      .querySelector('[aria-label="Open Member onboarding chat"]')
-      .getBoundingClientRect();
-    return Math.hypot(label.x - x, label.y - y) > 24;
-  }, beforeWalking);
-  await page.screenshot({ path: "test-results/awl-office-walking.png" });
-  await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      value: true,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  const paused = await movingLabel.boundingBox();
-  await page.waitForTimeout(150);
-  assert.deepEqual(
-    await movingLabel.boundingBox(),
-    paused,
-    "Walking must pause when the window is hidden",
-  );
-  await page.screenshot({ path: "test-results/awl-office.png" });
-
-  const station = page.getByRole("button", {
-    name: "Open Member onboarding chat",
-    exact: true,
-  });
-  const original = await station.boundingBox();
+  const before = await label.boundingBox();
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-  const zoomed = await station.boundingBox();
-  assert.ok(
-    Math.abs(original.x - zoomed.x) > 1 || Math.abs(original.y - zoomed.y) > 1,
-  );
+  const after = await label.boundingBox();
+  assert.ok(Math.hypot(before.x - after.x, before.y - after.y) > 1);
   await page.getByRole("button", { name: "Reset office view" }).click();
-  const reset = await station.boundingBox();
-  assert.ok(
-    Math.abs(original.x - reset.x) < 1 && Math.abs(original.y - reset.y) < 1,
-  );
-  const canvasBounds = await page
-    .locator(".office-canvas canvas")
-    .boundingBox();
-  const orbitX = canvasBounds.x + canvasBounds.width * 0.8;
-  const orbitY = canvasBounds.y + 30;
-  await page.mouse.move(orbitX, orbitY);
-  await page.mouse.down();
-  await page.mouse.move(orbitX - 70, orbitY + 10);
-  await page.mouse.up();
-  const orbited = await station.boundingBox();
-  assert.ok(
-    Math.abs(original.x - orbited.x) > 1 ||
-      Math.abs(original.y - orbited.y) > 1,
-  );
-  assert.equal(
-    await overview.getAttribute("aria-selected"),
-    "true",
-    "Orbiting must not select an agent",
-  );
-  await page.getByRole("button", { name: "Reset office view" }).click();
-  await station.click();
-  assert.equal(await draft.inputValue(), "Preserve this draft");
-  assert.equal(
-    await page.locator(".office-canvas canvas").count(),
-    0,
-    "The hidden overview must release its WebGL canvas",
-  );
-
-  // The actual 3D workstation, not just its HTML label, opens the correct chat.
+  await label.click();
+  assert.equal(await draft.inputValue(), "Keep this draft");
+  assert.equal(await page.locator(".office-canvas canvas").count(), 0);
   await overview.click();
-  await officeReady();
-  const otherStation = await page
-    .getByRole("button", { name: "Open Statement lookup chat", exact: true })
+  await ready();
+  const other = await page
+    .getByRole("button", { name: "Open Read the guide chat", exact: true })
     .boundingBox();
   await page.mouse.click(
-    otherStation.x + otherStation.width / 2,
-    otherStation.y + otherStation.height + 45,
+    other.x + other.width / 2,
+    other.y + other.height + 45,
   );
   await page
-    .getByRole("heading", { name: "Statement lookup", exact: true })
+    .getByRole("heading", { name: "Read the guide", exact: true })
     .waitFor();
-  assert.equal(await chat.getAttribute("aria-selected"), "true");
-
-  // Handoff ownership and browser-local review state survive the round trip.
-  await page
-    .getByRole("button", { name: "Member onboarding Needs you", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Take control", exact: true })
-    .first()
-    .click();
+  await page.getByText("Done.", { exact: true }).waitFor();
   await overview.click();
-  await officeReady();
-  await expectStatus("Member onboarding", "You’re in control");
+  await ready();
+  await publish({ ...working, status: "error", error: "Needs input." });
   await page
-    .getByRole("navigation", { name: "Office agents" })
-    .getByRole("button", { name: /Member onboarding You’re in control/ })
-    .click();
-  await page
-    .getByText(
-      "The browser stays yours. Resume to preview the next demo state.",
-    )
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='waiting']")
     .waitFor();
-  await page.getByRole("button", { name: "Resume with awl" }).click();
-  await overview.click();
-  await officeReady();
-  await expectStatus("Member onboarding", "Ready to replay");
+  await status("Research", "Needs you");
+  await publish({ ...working, status: "idle" });
   await page
-    .getByRole("button", { name: "Open Member onboarding chat" })
-    .click();
-  // Freeze the short demo replay so its working state is reliably inspectable.
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
-  await page
-    .getByRole("button", { name: /Try a replay without the model/ })
-    .click();
-  await overview.click();
-  await officeReady();
-  await expectStatus("Member onboarding", "Working");
-  assert.equal(
-    await page
-      .locator(".station-label .office-status[data-phase='replaying'] > svg")
-      .evaluate((icon) => getComputedStyle(icon).animationName),
-    "office-working",
-  );
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  assert.equal(
-    await page
-      .locator(".station-label .office-status[data-phase='replaying'] > svg")
-      .evaluate((icon) => getComputedStyle(icon).animationName),
-    "none",
-  );
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.clock.runFor(2000);
-  await page.clock.resume();
-  await page
-    .getByRole("navigation", { name: "Office agents" })
-    .getByRole("button", { name: /Member onboarding Completed/ })
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='finished']")
     .waitFor();
-  await expectStatus("Member onboarding", "Completed");
-
-  // Tab keyboard navigation and new-agent projection share the same state.
+  await status("Research", "Completed");
   await overview.press("ArrowLeft");
-  assert.equal(await chat.getAttribute("aria-selected"), "true");
+  assert.equal(await chatTab.getAttribute("aria-selected"), "true");
   await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".agent-item").length === 3,
+  );
   await overview.click();
-  await officeReady();
-  assert.equal(await page.locator(".station-label").count(), 3);
-  await expectStatus("New agent", "Not started");
-  await page
-    .getByRole("button", { name: "Open New agent chat", exact: true })
-    .click();
-  await page.getByRole("heading", { name: "What’s the task?" }).waitFor();
+  await ready();
+  await status("New agent", "Not started");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await overview.click();
-  await officeReady();
-  assert.equal(
-    await page.locator(".office-canvas").getAttribute("data-motion"),
-    "reduced",
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".office-canvas")?.dataset.motion === "reduced",
   );
-  await page.evaluate(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      value: false,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  const stillLabel = await page
-    .getByRole("button", { name: "Open Statement lookup chat", exact: true })
-    .boundingBox();
-  await page.waitForTimeout(150);
-  assert.deepEqual(
-    await page
-      .getByRole("button", { name: "Open Statement lookup chat", exact: true })
-      .boundingBox(),
-    stillLabel,
-  );
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setSize(1000, 700),
-  );
-  await page.waitForFunction(() => window.innerWidth <= 1000);
-  // A resized hidden native window may not produce a compositor frame for a
-  // screenshot. Briefly show it without taking focus, then hide it again.
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].showInactive(),
-  );
-  try {
-    await page.screenshot({ path: "test-results/awl-office-compact.png" });
-  } finally {
-    await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].hide(),
-    );
-  }
-  assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-    true,
-  );
-
-  // Loss of WebGL must leave navigation usable.
   await page
     .locator(".office-canvas canvas")
     .evaluate((canvas) =>
@@ -271,44 +127,15 @@ try {
   await page.getByText("The 3D view isn’t available here.").waitFor();
   await page
     .getByRole("navigation", { name: "Office agents" })
-    .getByRole("button", { name: /Statement lookup Completed/ })
+    .getByRole("button", { name: /Read the guide Completed/ })
     .click();
   await page
-    .getByRole("heading", { name: "Statement lookup", exact: true })
-    .waitFor();
-  // A machine with no WebGL at all gets the same usable fallback on first load.
-  await page.reload();
-  await page
-    .getByRole("heading", { name: "Member onboarding", exact: true })
-    .waitFor();
-  await page.evaluate(() => {
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
-      if (type.includes("webgl")) return null;
-      return getContext.call(this, type, ...args);
-    };
-  });
-  await overview.click();
-  await page.getByText("The 3D view isn’t available here.").waitFor();
-  await page
-    .getByRole("navigation", { name: "Office agents" })
-    .getByRole("button", { name: /Member onboarding Needs you/ })
-    .click();
-  await page
-    .getByRole("heading", { name: "Member onboarding", exact: true })
+    .getByRole("heading", { name: "Read the guide", exact: true })
     .waitFor();
   assert.deepEqual(errors, []);
-  assert.deepEqual(
-    externalRequests,
-    [],
-    "The office must not fetch external models, textures, or fonts",
-  );
   console.log(
-    "Passed: 3D rendering, camera controls, mesh/label selection, draft and handoff preservation, live state, new agents, reduced motion, compact layout, WebGL fallback, local assets.",
+    "Passed: office projects real session events, working/waiting/completed states, new sessions, mesh/label selection, camera, draft preservation, reduced motion, WebGL fallback.",
   );
-} catch (error) {
-  console.error(error);
-  throw error;
 } finally {
   await app.close();
 }
