@@ -1,7 +1,8 @@
 import { ArrowUpRight, Minus, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { phaseLabel, type Agent } from "../../demo";
-import { IconButton, StatusDot } from "../ui";
+import { type Agent } from "../../demo";
+import { IconButton } from "../ui";
+import { AgentStatus } from "./AgentStatus";
 import { createOffice } from "./office-scene";
 import "./overview.css";
 
@@ -108,15 +109,17 @@ export default function Overview({ agents, onSelect }: Props) {
                   }}
                   className={`station-label ${agent.phase === "waiting" ? "needs-help" : ""}`}
                   aria-label={`Open ${agent.name} chat`}
+                  aria-describedby={`office-status-${agent.id}`}
                   onClick={() => onSelect(agent.id)}
                 >
-                  <StatusDot
-                    active={
-                      agent.phase === "waiting" || agent.phase === "replaying"
-                    }
+                  <span className="station-label-title">
+                    <span>{agent.name}</span>
+                    <ArrowUpRight size={12} aria-hidden="true" />
+                  </span>
+                  <AgentStatus
+                    phase={agent.phase}
+                    id={`office-status-${agent.id}`}
                   />
-                  <span>{agent.name}</span>
-                  <ArrowUpRight size={12} />
                 </button>
               ))}
             </div>
@@ -138,7 +141,7 @@ export default function Overview({ agents, onSelect }: Props) {
             </span>
             <span className="overview-agent-copy">
               <strong>{agent.name}</strong>
-              <span>{phaseLabel(agent.phase)}</span>
+              <AgentStatus phase={agent.phase} />
             </span>
             <ArrowUpRight size={16} />
           </button>

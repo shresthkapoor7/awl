@@ -56,8 +56,9 @@
   visibility: hidden;
   pointer-events: auto;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
   padding: 10px 12px;
   font-size: 11px;
   white-space: nowrap;
@@ -67,12 +68,22 @@
   box-shadow: 0 5px 16px #0005;
   max-width: 210px;
 }
-.station-label > span:not(.status-dot) {
+.station-label-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.station-label-title > span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.station-label-title > svg {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #888;
+}
 .station-label.needs-help {
-  border-color: #666;
+  border-color: #77603b;
 }
 .station-label:hover {
   border-color: #999;
@@ -132,9 +143,38 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.overview-agent-copy > span {
+.office-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
-  color: var(--muted);
+  color: #999;
+}
+.office-status > svg {
+  flex-shrink: 0;
+}
+.office-status[data-phase="waiting"],
+.office-status[data-phase="human"] {
+  color: #dbb577;
+}
+.office-status[data-phase="replaying"] {
+  color: #91b9e8;
+}
+.office-status[data-phase="finished"] {
+  color: #9bc5a8;
+}
+.office-status[data-phase="replaying"] > svg {
+  animation: office-working 1.8s linear infinite;
+}
+@keyframes office-working {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .office-status[data-phase="replaying"] > svg {
+    animation: none;
+  }
 }
 .office-fallback {
   height: 100%;

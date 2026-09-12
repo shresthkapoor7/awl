@@ -31,11 +31,25 @@ try {
   const draft = page.getByRole("textbox", { name: "Message your agent" });
   const officeReady = () =>
     page.locator('.office-stage[data-ready="true"]').waitFor();
+  const expectStatus = async (name, status) => {
+    const label = page.getByRole("button", {
+      name: `Open ${name} chat`,
+      exact: true,
+    });
+    assert.equal(await label.locator(".office-status").innerText(), status);
+    assert.ok(await label.getAttribute("aria-describedby"));
+    await page
+      .getByRole("navigation", { name: "Office agents" })
+      .getByRole("button", { name: new RegExp(`${name} ${status}`) })
+      .waitFor();
+  };
   await draft.fill("Preserve this draft");
   await overview.click();
   await officeReady();
   assert.equal(await page.locator(".office-canvas canvas").count(), 1);
   assert.equal(await page.locator(".station-label").count(), 2);
+  await expectStatus("Member onboarding", "Needs you");
+  await expectStatus("Statement lookup", "Completed");
   await page.getByText("2 agents").waitFor();
   // Drive visibility explicitly while the test window stays out of the user's way.
   await page.evaluate(() => {
@@ -146,6 +160,7 @@ try {
   await page.getByRole("button", { name: "Continue to review" }).click();
   await overview.click();
   await officeReady();
+  await expectStatus("Member onboarding", "You’re in control");
   await page
     .getByRole("navigation", { name: "Office agents" })
     .getByRole("button", { name: /Member onboarding You’re in control/ })
@@ -154,15 +169,42 @@ try {
   assert.equal(await confirmation.isEnabled(), true);
   await page.getByRole("button", { name: "Review prepared" }).waitFor();
   await page.getByRole("button", { name: "Resume with awl" }).click();
+  await overview.click();
+  await officeReady();
+  await expectStatus("Member onboarding", "Ready to replay");
+  await page
+    .getByRole("button", { name: "Open Member onboarding chat" })
+    .click();
+  // Freeze the short demo replay so its working state is reliably inspectable.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
   await page
     .getByRole("button", { name: /Try a replay without the model/ })
     .click();
   await overview.click();
   await officeReady();
+  await expectStatus("Member onboarding", "Working");
+  assert.equal(
+    await page
+      .locator(".station-label .office-status[data-phase='replaying'] > svg")
+      .evaluate((icon) => getComputedStyle(icon).animationName),
+    "office-working",
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal(
+    await page
+      .locator(".station-label .office-status[data-phase='replaying'] > svg")
+      .evaluate((icon) => getComputedStyle(icon).animationName),
+    "none",
+  );
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.clock.runFor(2000);
+  await page.clock.resume();
   await page
     .getByRole("navigation", { name: "Office agents" })
     .getByRole("button", { name: /Member onboarding Completed/ })
     .waitFor();
+  await expectStatus("Member onboarding", "Completed");
 
   // Tab keyboard navigation and new-agent projection share the same state.
   await overview.press("ArrowLeft");
@@ -171,6 +213,7 @@ try {
   await overview.click();
   await officeReady();
   assert.equal(await page.locator(".station-label").count(), 3);
+  await expectStatus("New agent", "Not started");
   await page
     .getByRole("button", { name: "Open New agent chat", exact: true })
     .click();
