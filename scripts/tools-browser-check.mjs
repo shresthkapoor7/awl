@@ -142,6 +142,28 @@ try {
   });
   assert.equal(clicked.ok, true, JSON.stringify(clicked));
   assert.ok((await inspect()).data.text.includes("Ada"));
+  assert.equal(
+    (
+      await call("browser-wait", "browserWait", {
+        tab_id: tabId,
+        condition: "text",
+        contains: "Ada",
+        timeout_ms: 1000,
+      })
+    ).ok,
+    true,
+  );
+  assert.equal(
+    (
+      await call("browser-wait", "browserWait", {
+        tab_id: tabId,
+        condition: "text",
+        contains: "not-here",
+        timeout_ms: 100,
+      })
+    ).error.code,
+    "CONDITION_TIMEOUT",
+  );
   console.log(
     "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
   );
