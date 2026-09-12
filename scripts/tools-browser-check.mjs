@@ -80,6 +80,12 @@ try {
     ).error.code,
     "TAB_NOT_FOUND",
   );
+  const capture = await call("browser-screenshot", "browserScreenshot", {
+    tab_id: tabId,
+  });
+  assert.equal(capture.ok, true, JSON.stringify(capture));
+  assert.ok(capture.image.startsWith("data:image/png;base64,iVBOR"));
+  assert.ok(capture.data.image.width <= 1280);
   console.log(
     "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
   );
