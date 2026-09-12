@@ -32,7 +32,7 @@ The 3D overview and execution backend are not implemented yet.
 
 ## Run locally
 
-Requires Node.js 22.12 or newer and npm. Electron is installed as a project dependency; a global installation is not needed. Its browser binary may download on the first launch. On macOS, the launch scripts name the project’s local Electron runtime **awl** in the menu bar and Dock.
+Requires Node.js 22.12 or newer and npm. Electron is installed as a project dependency; a global installation is not needed. Its browser binary may download on the first launch. On macOS, the launch scripts create a cached **awl.app** runtime with its own identity for the menu bar and Dock. The cache lives in `node_modules/.cache/awl` and refreshes when Electron changes.
 
 ```sh
 npm ci

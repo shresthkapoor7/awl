@@ -24,7 +24,7 @@ try {
     .waitFor();
   // Check the OS-visible name, not just Electron's internal app.getName().
   if (process.platform === "darwin") {
-    const name = execFileSync(
+    const identity = execFileSync(
       "/usr/bin/osascript",
       [
         "-l",
@@ -35,7 +35,11 @@ try {
         var apps = $.NSWorkspace.sharedWorkspace.runningApplications;
         for (var i = 0; i < apps.count; i++) {
           var app = apps.objectAtIndex(i);
-          if (app.processIdentifier === Number(argv[0])) return ObjC.unwrap(app.localizedName);
+          if (app.processIdentifier === Number(argv[0])) return JSON.stringify({
+            name: ObjC.unwrap(app.localizedName),
+            bundleId: ObjC.unwrap(app.bundleIdentifier),
+            bundlePath: ObjC.unwrap(app.bundleURL.path),
+          });
         }
         throw Error('App not found');
       }`,
@@ -43,7 +47,10 @@ try {
       ],
       { encoding: "utf8", timeout: 10000 },
     ).trim();
+    const { name, bundleId, bundlePath } = JSON.parse(identity);
     assert.equal(name, "awl");
+    assert.equal(bundleId, "local.awl.desktop");
+    assert.equal(bundlePath.endsWith("/awl.app"), true);
   }
   await page.evaluate(() => document.fonts.ready);
   await mkdir("test-results", { recursive: true });
