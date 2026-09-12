@@ -107,6 +107,41 @@ try {
   });
   assert.equal(page2.data.elements.length, 1);
   assert.equal(page2.data.next_offset, 1);
+  const inspect = () =>
+    call("browser-dom", "browserDom", {
+      tab_id: tabId,
+      frame_id: null,
+      offset: 0,
+      limit: 100,
+    });
+  const fresh = await inspect();
+  const inputRef = fresh.data.elements.find((el) => el.name === "Name").ref;
+  const actionArgs = {
+    tab_id: tabId,
+    frame_id: fresh.data.frame_id,
+    snapshot_id: fresh.data.snapshot_id,
+    ref: inputRef,
+    action: "fill",
+    value: "Ada",
+  };
+  assert.equal(
+    (await call("browser-action", "browserAction", actionArgs)).ok,
+    true,
+  );
+  assert.equal(
+    (await call("browser-action", "browserAction", actionArgs)).error.code,
+    "STALE_ELEMENT",
+  );
+  const afterFill = await inspect();
+  const clicked = await call("browser-action", "browserAction", {
+    ...actionArgs,
+    snapshot_id: afterFill.data.snapshot_id,
+    ref: afterFill.data.elements.find((el) => el.name === "Save").ref,
+    action: "click",
+    value: null,
+  });
+  assert.equal(clicked.ok, true, JSON.stringify(clicked));
+  assert.ok((await inspect()).data.text.includes("Ada"));
   console.log(
     "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
   );
