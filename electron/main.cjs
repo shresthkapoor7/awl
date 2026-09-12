@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu } = require("electron");
 const path = require("node:path");
 
 app.setName("awl");
+const iconPath = path.join(__dirname, "assets", "awl.png");
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -11,6 +12,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: "#0a0a0a",
     title: "awl",
+    icon: iconPath,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 20, y: 20 },
     show: false,
@@ -38,6 +40,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  app.dock?.setIcon(iconPath);
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       ...(process.platform === "darwin" ? [{ role: "appMenu" }] : []),
