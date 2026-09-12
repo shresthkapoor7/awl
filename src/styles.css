@@ -9,8 +9,8 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --base: #000000;
-  --hover: #0d0d0d;
+  --base: #0a0a0a;
+  --hover: #141414;
   --border: #222222;
   --text: #d4d4d4;
   --muted: #999999;
@@ -122,7 +122,8 @@ strong {
 .titlebar-left {
   display: flex;
   align-items: center;
-  min-width: var(--sidebar-width);
+  flex-shrink: 0;
+  padding-right: 12px;
 }
 .window-clearance {
   width: 92px;
