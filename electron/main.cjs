@@ -9,7 +9,7 @@ function createWindow() {
     height: 960,
     minWidth: 1000,
     minHeight: 700,
-    backgroundColor: "#121413",
+    backgroundColor: "#0d0d0d",
     title: "awl",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 20, y: 20 },

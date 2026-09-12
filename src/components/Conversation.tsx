@@ -97,7 +97,6 @@ export function Conversation({
           <>
             <div className="date-divider">
               <span>Today</span>
-              <span>Local preview</span>
             </div>
             <article className="user-message">
               <div className="message-person">
@@ -193,19 +192,12 @@ export function Conversation({
                       ? "Over to you."
                       : "A little help here."}
                   </span>
-                  <span className="handoff-step">STEP 04</span>
                 </div>
                 <p>
                   {agent.phase === "human"
-                    ? "You have the browser. Confirm the member’s details on the right, then hand it back."
-                    : "This step needs a staff confirmation. Take control of the browser to review the member’s details."}
+                    ? "Confirm the member’s details, then resume."
+                    : "Review the member’s details in the browser to continue."}
                 </p>
-                <div className="handoff-reassurance">
-                  <span className="small-square" />
-                  {agent.phase === "human"
-                    ? "Automation paused while you work"
-                    : "Your session stays exactly where it is"}
-                </div>
                 <button
                   className="primary-button"
                   onClick={agent.phase === "human" ? onResume : onTakeControl}
@@ -259,12 +251,6 @@ export function Conversation({
                 </button>
               </article>
             )}
-            <div className="run-end">
-              <span />
-              <span>
-                {complete ? "Workflow captured" : "Waiting for your input"}
-              </span>
-            </div>
           </>
         )}
         {agent.messages.map((message) => (
@@ -314,14 +300,6 @@ export function Conversation({
             }}
           />
           <div className="composer-bottom">
-            <span className="composer-context">
-              <span className="small-square" />
-              {empty
-                ? "New session"
-                : complete
-                  ? "Saved workflow"
-                  : "Learning this workflow"}
-            </span>
             <button
               className="send-button"
               type="submit"
@@ -332,12 +310,6 @@ export function Conversation({
             </button>
           </div>
         </form>
-        <div className="composer-footnote">
-          <span>Interface preview · no AI calls</span>
-          <span>
-            ↵ send <span className="footnote-separator">/</span> ⇧↵ new line
-          </span>
-        </div>
       </div>
     </section>
   );

@@ -1,20 +1,19 @@
 import {
-  BookOpen,
   Check,
-  ChevronDown,
   ChevronRight,
-  CircleHelp,
   Command,
   FileText,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   Search,
   Workflow,
-  X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { initialAgents, phaseLabel, type Agent } from "./demo";
+import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
 import { IconButton, Mark, StatusDot } from "./components/ui";
@@ -28,9 +27,23 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [browserOpen, setBrowserOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(224);
+  const [browserWidth, setBrowserWidth] = useState(580);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const sidebarMax = Math.min(320, Math.max(180, windowWidth - 680));
+  const leftWidth = Math.min(sidebarWidth, sidebarMax);
+  const browserMax = Math.max(
+    340,
+    windowWidth - (sidebarOpen ? leftWidth : 0) - 320,
+  );
+  const rightWidth = Math.min(browserWidth, browserMax);
+  useEffect(() => {
+    const resize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
   const [mobileView, setMobileView] = useState<"chat" | "browser">("chat");
-  const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const agent = agents.find((item) => item.id === selectedId)!;
 
@@ -67,6 +80,7 @@ export function App() {
     updateAgent({ phase: "human" });
     setTab("browser");
     setMobileView("browser");
+    setBrowserOpen(true);
   }
   function resume() {
     if (agent.verified && agent.phase === "human")
@@ -96,7 +110,7 @@ export function App() {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            text: "This preview uses the sample onboarding workflow. You can try taking control, confirming the details, and replaying the result.",
+            text: "Sample workflow loaded. Take control to try the handoff.",
           },
         ],
       });
@@ -108,7 +122,7 @@ export function App() {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            text: "Your direction is noted for this demo session. Use the browser and handoff controls to explore the workflow; live AI responses will come later.",
+            text: "Noted for this demo. Live responses aren’t connected yet.",
           },
         ],
       });
@@ -133,10 +147,6 @@ export function App() {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
   useEffect(() => {
-    if (helpOpen) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [helpOpen]);
-  useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -154,7 +164,15 @@ export function App() {
   }, []);
 
   return (
-    <div className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+    <div
+      className={`app-shell ${sidebarOpen ? "" : "sidebar-collapsed"}`}
+      style={
+        {
+          "--sidebar-width": `${leftWidth}px`,
+          "--browser-width": `${rightWidth}px`,
+        } as CSSProperties
+      }
+    >
       <header className="titlebar">
         <div className="titlebar-left">
           <span className="window-clearance" />
@@ -174,7 +192,19 @@ export function App() {
           <ChevronRight size={12} />
           <span>{agent.name}</span>
         </div>
-        <span className="preview-badge">Interface preview</span>
+        <IconButton
+          label={browserOpen ? "Hide browser" : "Show browser"}
+          onClick={() => {
+            setBrowserOpen(!browserOpen);
+            setMobileView(browserOpen ? "chat" : "browser");
+          }}
+        >
+          {browserOpen ? (
+            <PanelRightClose size={16} />
+          ) : (
+            <PanelRightOpen size={16} />
+          )}
+        </IconButton>
       </header>
       {sidebarOpen && (
         <aside className="sidebar">
@@ -185,7 +215,6 @@ export function App() {
                 awl<span className="brand-period">.</span>
               </span>
             </div>
-            <span className="version">0.1</span>
           </div>
           <button className="new-agent" onClick={newAgent}>
             <Plus size={17} />
@@ -261,18 +290,6 @@ export function App() {
             ) && <p className="no-results">No sessions found.</p>}
           </nav>
           <div className="sidebar-bottom">
-            <div className="sidebar-note">
-              <span className="note-line" />
-              <p>
-                A little less repetition.
-                <br />A little more possibility.
-              </p>
-            </div>
-            <button className="help-button" onClick={() => setHelpOpen(true)}>
-              <CircleHelp size={16} />
-              <span>About this preview</span>
-              <ChevronRight size={13} />
-            </button>
             <div className="local-workspace">
               <span className="workspace-avatar">a</span>
               <div>
@@ -282,12 +299,20 @@ export function App() {
                   On this computer
                 </span>
               </div>
-              <ChevronDown size={13} />
             </div>
           </div>
+          <ResizeHandle
+            label="Resize agent sidebar"
+            value={leftWidth}
+            min={180}
+            max={sidebarMax}
+            onChange={setSidebarWidth}
+          />
         </aside>
       )}
-      <main className={`workspace mobile-${mobileView}`}>
+      <main
+        className={`workspace mobile-${mobileView} ${browserOpen ? "" : "browser-collapsed"}`}
+      >
         <div className="mobile-view-switch">
           <button
             aria-pressed={mobileView === "chat"}
@@ -297,7 +322,10 @@ export function App() {
           </button>
           <button
             aria-pressed={mobileView === "browser"}
-            onClick={() => setMobileView("browser")}
+            onClick={() => {
+              setMobileView("browser");
+              setBrowserOpen(true);
+            }}
           >
             Browser & capability
           </button>
@@ -311,59 +339,32 @@ export function App() {
           onCapability={() => {
             setTab("capability");
             setMobileView("browser");
+            setBrowserOpen(true);
           }}
           onReplay={replay}
         />
-        <BrowserPanel
-          key={`browser-${agent.id}`}
-          agent={agent}
-          tab={tab}
-          setTab={setTab}
-          onTakeControl={takeControl}
-          onVerify={(verified) => updateAgent({ verified })}
-          onResume={resume}
-          onReplay={replay}
-          onReset={reset}
-        />
-      </main>
-      <dialog
-        ref={dialog}
-        className="help-dialog"
-        onCancel={() => setHelpOpen(false)}
-        onClose={() => setHelpOpen(false)}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) setHelpOpen(false);
-        }}
-      >
-        <div className="dialog-heading">
-          <BookOpen size={20} />
-          <IconButton
-            label="Close preview guide"
-            onClick={() => setHelpOpen(false)}
-          >
-            <X size={18} />
-          </IconButton>
+        <div className="browser-dock" hidden={!browserOpen}>
+          <ResizeHandle
+            label="Resize browser panel"
+            value={rightWidth}
+            min={340}
+            max={browserMax}
+            onChange={setBrowserWidth}
+            reversed
+          />
+          <BrowserPanel
+            key={`browser-${agent.id}`}
+            agent={agent}
+            tab={tab}
+            setTab={setTab}
+            onTakeControl={takeControl}
+            onVerify={(verified) => updateAgent({ verified })}
+            onResume={resume}
+            onReplay={replay}
+            onReset={reset}
+          />
         </div>
-        <span className="eyebrow">A FIRST LOOK AT AWL</span>
-        <h2>The workflow is the interface.</h2>
-        <p>
-          This is an interactive, local UI prototype. The member portal, agent
-          responses, and saved capability are sample data.
-        </p>
-        <ol>
-          <li>Take control of the paused browser.</li>
-          <li>Confirm the fictional member’s details.</li>
-          <li>Hand it back and inspect the capability.</li>
-          <li>Try the simulated replay.</li>
-        </ol>
-        <p className="dialog-note">
-          No websites are visited, no API calls are made, and nothing is
-          submitted. Changes reset when the app closes or reloads.
-        </p>
-        <button className="primary-button" onClick={() => setHelpOpen(false)}>
-          Back to the workspace
-        </button>
-      </dialog>
+      </main>
     </div>
   );
 }

@@ -54,7 +54,7 @@ For a browser-only preview, run `npm run dev:web` and open the local URL printed
 3. Select **Resume with awl** to see the completed workflow.
 4. Open **Capability** and select **Try a replay** for the simulated replay state.
 
-You can also switch agents, search sessions, create a new agent, and send messages to explore the conversation layout. **About this preview** explains the available interactions. The browser toolbar's reset button restarts the selected demo.
+You can also switch agents, search sessions, create a new agent, and send messages to explore the conversation layout. Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys. The browser toolbar's reset button restarts the selected demo.
 
 ## Checks
 
@@ -63,4 +63,4 @@ npm run build
 npm run test:ui
 ```
 
-The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
+The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, panel resizing and collapse, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.

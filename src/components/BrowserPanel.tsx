@@ -331,16 +331,6 @@ export function BrowserPanel({
           )}
           {!empty && (
             <footer className="browser-footer">
-              <span>
-                <StatusDot
-                  active={
-                    agent.phase === "human" || agent.phase === "replaying"
-                  }
-                />
-                {agent.phase === "human"
-                  ? "Your changes stay in this session"
-                  : "Same browser. Shared context."}
-              </span>
               {agent.phase === "waiting" && (
                 <button className="text-button" onClick={onTakeControl}>
                   Take control

@@ -15,6 +15,7 @@ const errors = [];
 
 try {
   const page = await app.firstWindow();
+  page.setDefaultTimeout(10000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page
     .getByRole("heading", { name: "Member onboarding", exact: true })
@@ -22,6 +23,71 @@ try {
   await page.evaluate(() => document.fonts.ready);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/awl-desktop.png" });
+
+  // Both dividers resize by pointer and keyboard; toggles preserve widths and draft.
+  const sidebar = page.locator(".sidebar");
+  const dock = page.locator(".browser-dock");
+  const draft = page.getByRole("textbox", { name: "Message your agent" });
+  const leftDivider = page.getByRole("separator", {
+    name: "Resize agent sidebar",
+  });
+  const rightDivider = page.getByRole("separator", {
+    name: "Resize browser panel",
+  });
+  async function dragDivider(divider, distance) {
+    const start = Number(await divider.getAttribute("aria-valuenow"));
+    const reversed =
+      (await divider.getAttribute("aria-label")) === "Resize browser panel";
+    const box = await divider.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + distance,
+      box.y + box.height / 2,
+      { steps: 1 },
+    );
+    await page.mouse.up();
+
+    await page.waitForFunction(
+      ({ label, width }) =>
+        Number(
+          document
+            .querySelector(`[aria-label="${label}"]`)
+            .getAttribute("aria-valuenow"),
+        ) === width,
+      {
+        label: await divider.getAttribute("aria-label"),
+        width: start + distance * (reversed ? -1 : 1),
+      },
+    );
+  }
+  const originalLeft = (await sidebar.boundingBox()).width;
+  await dragDivider(leftDivider, 40);
+  assert.equal((await sidebar.boundingBox()).width, originalLeft + 40);
+  await leftDivider.press("ArrowLeft");
+  assert.equal((await sidebar.boundingBox()).width, originalLeft + 24);
+  const originalRight = (await dock.boundingBox()).width;
+  await dragDivider(rightDivider, -40);
+  assert.equal((await dock.boundingBox()).width, originalRight + 40);
+  await rightDivider.press("ArrowRight");
+  assert.equal((await dock.boundingBox()).width, originalRight + 24);
+  await draft.fill("Keep this draft");
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  assert.equal(await sidebar.isVisible(), false);
+  await page.getByRole("button", { name: "Hide browser", exact: true }).click();
+  assert.equal(await dock.isVisible(), false);
+  assert.equal(await draft.inputValue(), "Keep this draft");
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
+  assert.equal((await sidebar.boundingBox()).width, originalLeft + 24);
+  assert.equal((await dock.boundingBox()).width, originalRight + 24);
+  await draft.fill("");
+  await draft.focus();
+  assert.equal(
+    await draft.evaluate((el) => getComputedStyle(el).outlineStyle),
+    "none",
+  );
+  await page.screenshot({ path: "test-results/awl-focused-composer.png" });
 
   // Ownership gates the browser form, then a verified handoff unlocks replay.
   const confirmation = page.getByRole("checkbox", {
@@ -47,6 +113,12 @@ try {
     true,
     "Preparing a review must not silently hand control back",
   );
+  await page.getByRole("button", { name: "Hide browser", exact: true }).click();
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
+  assert.equal(await confirmation.isChecked(), true);
+  await page
+    .getByText("Review ready. Hand control back when you’re done.")
+    .waitFor();
   await page.getByRole("button", { name: "Resume with awl" }).click();
   await page.getByText("That’s a workflow worth keeping.").waitFor();
   assert.equal(await confirmation.isDisabled(), true);
@@ -88,6 +160,13 @@ try {
     .getByRole("textbox", { name: "Search sessions" })
     .fill("not-a-session");
   await page.getByText("No sessions found.").waitFor();
+  assert.equal(
+    await page
+      .getByRole("textbox", { name: "Search sessions" })
+      .evaluate((el) => getComputedStyle(el).outlineStyle),
+    "none",
+  );
+  await page.screenshot({ path: "test-results/awl-focused-search.png" });
   await page.getByRole("button", { name: "New agent", exact: true }).click();
   await page.getByRole("heading", { name: "What’s the task?" }).waitFor();
   await page.screenshot({ path: "test-results/awl-new-session.png" });
@@ -95,11 +174,7 @@ try {
   await page.getByRole("button", { name: "Send message" }).click();
   await page.getByText("A little help here.", { exact: true }).waitFor();
 
-  // The guide is a keyboard-dismissable modal, and the shell fits its minimum size.
-  await page.getByRole("button", { name: "About this preview" }).click();
-  await page.getByRole("dialog").waitFor();
-  await page.keyboard.press("Escape");
-  assert.equal(await page.getByRole("dialog").isVisible(), false);
+  // The shell keeps all panels within its minimum window size.
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setSize(1000, 700),
   );
@@ -111,9 +186,29 @@ try {
     true,
   );
   await page.screenshot({ path: "test-results/awl-compact.png" });
+  await rightDivider.press("End");
+  assert.equal(
+    await page
+      .locator(".conversation")
+      .evaluate((el) => el.getBoundingClientRect().width >= 320),
+    true,
+  );
+  assert.equal(
+    await dock.evaluate(
+      (el) => el.getBoundingClientRect().right <= window.innerWidth,
+    ),
+    true,
+  );
+  await leftDivider.press("End");
+  assert.equal(
+    await dock.evaluate(
+      (el) => el.getBoundingClientRect().right <= window.innerWidth,
+    ),
+    true,
+  );
   assert.deepEqual(errors, [], `Renderer errors: ${errors.join(", ")}`);
   console.log(
-    "Passed: Electron launch, takeover/resume, capability, replay, session isolation, chat, search, new session, modal, compact layout.",
+    "Passed: Electron launch, takeover/resume, capability, replay, session isolation, chat, search, new session, panel resizing/collapse, compact layout.",
   );
 } finally {
   await app.close();
