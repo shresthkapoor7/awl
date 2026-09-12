@@ -1,0 +1,10 @@
+the_assignment.pdf
+AGENTS.md
+architecture.md
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+test-results/
