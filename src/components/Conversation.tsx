@@ -9,7 +9,7 @@ type Props = {
   enabled: boolean;
   startupError: string | null;
   onSend: (text: string) => Promise<boolean>;
-  onStop: () => void;
+  onStop: () => Promise<void>;
   onOpenLink: (url: string) => void;
 };
 export function Conversation({
@@ -23,8 +23,24 @@ export function Conversation({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const busy = agent.live.status === "running";
+  useEffect(() => {
+    if (!busy) setStopping(false);
+  }, [busy]);
+  async function stop() {
+    if (!busy || stopping) return;
+    setStopping(true);
+    setStopError(null);
+    try {
+      await onStop();
+    } catch {
+      setStopping(false);
+      setStopError("Could not stop the agent. Try again.");
+    }
+  }
   useEffect(() => {
     scroll.current?.scrollTo({
       top: scroll.current.scrollHeight,
@@ -50,12 +66,27 @@ export function Conversation({
     >
       <header className="conversation-header">
         <h1>{agent.name}</h1>
-        {agent.messages.length > 0 && (
-          <span className="phase-pill">
-            <span />
-            {phaseLabel(agent.phase)}
-          </span>
-        )}
+        <div className="conversation-actions">
+          {agent.messages.length > 0 && (
+            <span className="phase-pill">
+              <span />
+              {stopping ? "Stopping…" : phaseLabel(agent.phase)}
+            </span>
+          )}
+          {busy && (
+            <button
+              className="stop-agent-button"
+              type="button"
+              onClick={() => void stop()}
+              disabled={stopping}
+              aria-label="Stop agent"
+              title="Stop the current turn"
+            >
+              <Square size={11} fill="currentColor" />
+              {stopping ? "Stopping…" : "Stop"}
+            </button>
+          )}
+        </div>
       </header>
       <div className="conversation-scroll" ref={scroll}>
         {!agent.messages.length && (
@@ -106,9 +137,9 @@ export function Conversation({
               : "Thinking…"}
           </p>
         )}
-        {(startupError || agent.live.error) && (
+        {(stopError || startupError || agent.live.error) && (
           <p className="live-agent-error" role="alert">
-            {startupError || agent.live.error}
+            {stopError || startupError || agent.live.error}
           </p>
         )}
       </div>
@@ -137,12 +168,14 @@ export function Conversation({
           <div className="composer-bottom">
             {busy ? (
               <button
-                className="send-button"
+                className="send-button stop-agent-icon"
                 type="button"
-                aria-label="Stop agent"
-                onClick={onStop}
+                aria-label="Stop generating"
+                title="Stop the current turn"
+                disabled={stopping}
+                onClick={() => void stop()}
               >
-                <Square size={15} />
+                <Square size={13} fill="currentColor" />
               </button>
             ) : (
               <button

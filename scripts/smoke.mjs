@@ -154,6 +154,48 @@ try {
     0,
   );
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
+  // Check both stop affordances, IPC targeting, failure retry, and acknowledgement.
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.stopRequests = [];
+    ipcMain.removeHandler("agent:stop");
+    ipcMain.handle("agent:stop", (_event, id) => {
+      globalThis.stopRequests.push(id);
+      if (globalThis.stopRequests.length === 1) throw new Error("Test failure");
+    });
+  });
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+  await page.getByText("Could not stop the agent. Try again.").waitFor();
+  await page
+    .getByRole("button", { name: "Stop generating", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => document.querySelector(".stop-agent-button")?.disabled,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Stop generating" }).isDisabled(),
+    true,
+  );
+  assert.deepEqual(await app.evaluate(() => globalThis.stopRequests), [
+    chat.id,
+    chat.id,
+  ]);
+  await app.evaluate(
+    ({ BrowserWindow }, chat) =>
+      BrowserWindow.getAllWindows()[0].webContents.send("agent:update", chat),
+    {
+      ...update,
+      status: "stopped",
+      tools: [],
+      error: "Stopped. Check the page before repeating an action.",
+    },
+  );
+  await page
+    .getByRole("button", { name: "Send message", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: "Stop agent", exact: true }).count(),
+    0,
+  );
   await page.getByRole("button", { name: "New agent", exact: true }).click();
   await page.waitForFunction(
     () => document.querySelectorAll(".agent-item").length === 2,

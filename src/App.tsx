@@ -429,8 +429,9 @@ export function App() {
           enabled={ready && !startupError}
           startupError={startupError}
           model={model}
-          onStop={() => {
-            void window.awlAgent?.stop(agent.id);
+          onStop={async () => {
+            if (!window.awlAgent) throw new Error("Agent unavailable");
+            await window.awlAgent.stop(agent.id);
           }}
         />
         <div className="browser-dock" hidden={!browserOpen}>

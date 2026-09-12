@@ -136,6 +136,38 @@ stopped.send("two", "Wait");
 stopped.stop("two");
 await finished(stopped);
 assert.equal(stopped.list()[0].status, "stopped");
+// Even a late response after Stop must never dispatch its proposed action.
+let resolveLate;
+let lateRequests = 0;
+const late = new AgentRuntime({
+  directory: "/unused",
+  browser: {},
+  publish: () => {},
+  client: {
+    responses: {
+      create: () => {
+        lateRequests++;
+        return new Promise((resolve) => {
+          resolveLate = resolve;
+        });
+      },
+    },
+  },
+});
+late.send("late", "Name the chat");
+late.stop("late");
+resolveLate({
+  status: "completed",
+  output_text: "",
+  output: [
+    functionCall("chat_set_name", { name: "Should never run" }, "late-call"),
+  ],
+});
+await finished(late);
+assert.equal(lateRequests, 1);
+assert.equal(late.list()[0].name, "New agent");
+assert.equal(late.list()[0].status, "stopped");
+assert.equal(late.list()[0].tools.length, 0);
 console.log(
   "Passed: Terra selection, tool result loop, strict validation recovery, unknown tools, serialization, cancellation, missing key.",
 );
