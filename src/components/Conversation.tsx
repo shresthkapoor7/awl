@@ -119,7 +119,7 @@ export function Conversation({
                   <Mark />
                 </span>
                 <strong>awl</strong>
-                <span>Discovery</span>
+                <span>Demo · discovery</span>
               </div>
               <p>
                 {statement
@@ -195,13 +195,12 @@ export function Conversation({
                 </div>
                 <p>
                   {agent.phase === "human"
-                    ? "Confirm the member’s details, then resume."
-                    : "Review the member’s details in the browser to continue."}
+                    ? "The browser stays yours. Resume to preview the next demo state."
+                    : "Try the handoff. This demo does not operate on the live website."}
                 </p>
                 <button
                   className="primary-button"
                   onClick={agent.phase === "human" ? onResume : onTakeControl}
-                  disabled={agent.phase === "human" && !agent.verified}
                 >
                   {agent.phase === "human" ? "Resume with awl" : "Take control"}
                   <ArrowRight size={15} />

@@ -121,39 +121,18 @@ try {
   );
   await page.screenshot({ path: "test-results/awl-focused-composer.png" });
 
-  // Ownership gates the browser form, then a verified handoff unlocks replay.
-  const confirmation = page.getByRole("checkbox", {
-    name: "I have reviewed the member’s details",
-  });
-  assert.equal(await confirmation.isDisabled(), true);
+  // Demo handoff changes the preview state without claiming browser execution.
   await page
     .getByRole("button", { name: "Take control", exact: true })
     .first()
     .click();
-  assert.equal(await confirmation.isEnabled(), true);
-  assert.equal(
-    await page.getByRole("button", { name: "Resume with awl" }).isDisabled(),
-    true,
-  );
-  await confirmation.check();
-  await page.getByRole("button", { name: "Continue to review" }).click();
   await page
-    .getByText("Review ready. Hand control back when you’re done.")
-    .waitFor();
-  assert.equal(
-    await confirmation.isEnabled(),
-    true,
-    "Preparing a review must not silently hand control back",
-  );
-  await page.getByRole("button", { name: "Hide browser", exact: true }).click();
-  await page.getByRole("button", { name: "Show browser", exact: true }).click();
-  assert.equal(await confirmation.isChecked(), true);
-  await page
-    .getByText("Review ready. Hand control back when you’re done.")
+    .getByText(
+      "The browser stays yours. Resume to preview the next demo state.",
+    )
     .waitFor();
   await page.getByRole("button", { name: "Resume with awl" }).click();
   await page.getByText("That’s a workflow worth keeping.").waitFor();
-  assert.equal(await confirmation.isDisabled(), true);
   await page
     .getByRole("button", {
       name: /Prepare savings account Reusable capability/,
@@ -171,7 +150,9 @@ try {
   await page
     .getByRole("button", { name: "Statement lookup Completed" })
     .click();
-  await page.getByRole("heading", { name: "Account statements" }).waitFor();
+  await page
+    .getByRole("heading", { name: "Statement lookup", exact: true })
+    .waitFor();
   await page
     .getByRole("button", { name: "Member onboarding Completed" })
     .click();

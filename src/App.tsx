@@ -99,21 +99,12 @@ export function App() {
     setBrowserOpen(true);
   }
   function resume() {
-    if (agent.verified && agent.phase === "human")
-      updateAgent({ phase: "ready" });
+    if (agent.phase === "human") updateAgent({ phase: "ready" });
   }
   function replay() {
     if (["ready", "finished"].includes(agent.phase)) {
       updateAgent({ phase: "replaying" });
     }
-  }
-  function reset() {
-    updateAgent({
-      phase: agent.kind === "statement" ? "finished" : "waiting",
-      verified: agent.kind === "statement",
-      messages: [],
-    });
-    setTab("browser");
   }
   function send(text: string) {
     if (agent.phase === "new") {
@@ -421,11 +412,12 @@ export function App() {
             agent={agent}
             tab={tab}
             setTab={setTab}
-            onTakeControl={takeControl}
-            onVerify={(verified) => updateAgent({ verified })}
-            onResume={resume}
+            visible={
+              view === "chat" &&
+              browserOpen &&
+              (windowWidth > 980 || mobileView === "browser")
+            }
             onReplay={replay}
-            onReset={reset}
           />
         </div>
       </main>

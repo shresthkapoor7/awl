@@ -8,11 +8,13 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run build:electron && tsc --noEmit && vite build",
     "start": "npm run build && node scripts/start.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p electron/tsconfig.json --noEmit && tsc --noEmit",
     "format": "prettier --write src electron scripts index.html vite.config.ts tsconfig.json package.json",
-    "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs"
+    "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "predev": "npm run build:electron"
   },
   "engines": {
     "node": ">=22.12.0"

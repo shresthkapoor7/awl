@@ -3,6 +3,7 @@ AGENTS.md
 architecture.md
 node_modules/
 dist/
+dist-electron/
 .env
 .env.*
 !.env.example

@@ -153,11 +153,6 @@ try {
     .getByRole("button", { name: "Take control", exact: true })
     .first()
     .click();
-  const confirmation = page.getByRole("checkbox", {
-    name: "I have reviewed the member’s details",
-  });
-  await confirmation.check();
-  await page.getByRole("button", { name: "Continue to review" }).click();
   await overview.click();
   await officeReady();
   await expectStatus("Member onboarding", "You’re in control");
@@ -165,9 +160,11 @@ try {
     .getByRole("navigation", { name: "Office agents" })
     .getByRole("button", { name: /Member onboarding You’re in control/ })
     .click();
-  assert.equal(await confirmation.isChecked(), true);
-  assert.equal(await confirmation.isEnabled(), true);
-  await page.getByRole("button", { name: "Review prepared" }).waitFor();
+  await page
+    .getByText(
+      "The browser stays yours. Resume to preview the next demo state.",
+    )
+    .waitFor();
   await page.getByRole("button", { name: "Resume with awl" }).click();
   await overview.click();
   await officeReady();

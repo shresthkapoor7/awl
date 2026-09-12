@@ -26,9 +26,10 @@ An optional 3D office overview will show agents' activity and highlight where at
 
 ## Status
 
-Interactive Electron UI prototype. The workspace includes an agent sidebar, chat, a simulated browser, a human handoff, and a capability preview. All agent responses and browser content are sample data; no websites are visited, no AI calls are made, and no automation code is generated. Session changes stay in memory and reset on reload.
+Electron workspace with a live embedded Chromium browser. Enter a website in the address bar and use it directly beside chat. Each agent has its own isolated browser session; tabs, forms, navigation history, and cookies stay alive when switching agents, collapsing the pane, or opening the office. Popups open as tabs in the same session, including opener-based sign-in flows.
 
-The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Agents sit with articulated legs, type during replay, pace when waiting, and stroll or take a coffee break after completion. The room has warm wood, daylight, and leafy plants. Motion reflects the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
+Chat responses, handoff, and capability replay are still explicitly labeled demos. They do not control the live browser, call OpenAI, or generate automation code. Browser sessions are held in memory for the current app window and are cleared when it closes. Browser views survive a UI reload, but conversation demo state and newly created agent entries are not persisted yet; reload returns to the built-in demo agents.
+The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Agents sit with articulated legs, type during replay, pace when waiting, and gather to gossip at the water cooler after completion. The room has warm wood, daylight, and leafy plants. Motion reflects the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
 
 ## Run locally
 
@@ -45,17 +46,18 @@ To run the built UI in Electron:
 npm start
 ```
 
-For a browser-only preview, run `npm run dev:web` and open the local URL printed by Vite.
+For a UI-only preview, run `npm run dev:web` and open the local URL printed by Vite. The embedded browser requires Electron. Renderer changes reload automatically during `npm run dev`; restart that command after changing Electron or preload code.
 
 ## Explore the prototype
 
-1. Open **Member onboarding** and select **Take control**.
-2. Check the member confirmation in the sample browser.
-3. Select **Resume with awl** to see the completed workflow.
-4. Open **Capability** and select **Try a replay** for the simulated replay state.
+1. Enter a website address in the browser pane; use Back, Forward, Reload, and the tab controls to browse. Cmd/Ctrl+L focuses the address bar.
+2. Switch agents to browse in another isolated session, then return to find your original page intact.
+3. Open **Overview** or **Capability**, or collapse the browser, without losing the live session.
+4. Use the chat's **Take control**, **Resume with awl**, and capability replay buttons to explore the separate demo flow. These buttons do not execute steps on your website.
 
-You can also switch agents, search sessions, create a new agent, and send messages to explore the conversation layout. Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys. The browser toolbar's reset button restarts the selected demo.
+Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys.
 
+Web pages run sandboxed without Node or the app's IPC bridge. The browser supports HTTP/HTTPS navigation; downloads, external app links, and permission-dependent features such as camera or geolocation are not connected yet. Browser automation, recording, persistent profiles, and crash recovery are future work.
 The office supports orbit, zoom, reset, and reduced motion. It stops rendering when closed or when the app is hidden. If WebGL is unavailable, the agent list remains usable. Scene assets ship locally.
 
 ## Checks
@@ -65,4 +67,4 @@ npm run build
 npm run test:ui
 ```
 
-The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, panel resizing and collapse, the 3D overview, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
+The UI check launches Electron and exercises live browsing against a local test site, navigation, popup sign-in, session isolation, form preservation, tab lifecycle, native view bounds, error recovery, the demo chat flow, and the office overview. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
