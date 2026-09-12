@@ -10,6 +10,7 @@ export type OfficePose = {
   typing: boolean;
   waving: boolean;
   coffee: boolean;
+  gossip: boolean;
 };
 type Stop = {
   point: Point;
@@ -19,11 +20,36 @@ type Stop = {
   waving?: boolean;
   coffee?: boolean;
   typing?: boolean;
+  gossip?: boolean;
 };
 
 export const SEAT: Point = [0.25, 1.1];
 export const STANDING_HEIGHT = 1.04;
 export const SEATED_HEIGHT = 0.66;
+
+export function officeLayout(count: number) {
+  const rows = Math.max(1, Math.ceil(count / 2));
+  const breakZ = (rows - 1) * 1.9 + 3.25;
+  const back = -Math.max(9, rows * 3.8 + 4) / 2;
+  const front = breakZ + (rows - 1) * 1.35 + 1.45;
+  return {
+    rows,
+    breakZ,
+    back,
+    front,
+    depth: front - back,
+    centerZ: (front + back) / 2,
+    cooler: [4.8, breakZ + 0.2] as Point,
+  };
+}
+
+export function workstationPosition(index: number, count: number): Point {
+  const { rows } = officeLayout(count);
+  return [
+    index % 2 === 0 ? -2.45 : 2.1,
+    (Math.floor(index / 2) - (rows - 1) / 2) * 3.8,
+  ];
+}
 
 function rest(stop: Stop): OfficePose {
   return {
@@ -35,13 +61,15 @@ function rest(stop: Stop): OfficePose {
     typing: stop.typing ?? false,
     waving: stop.waving ?? false,
     coffee: stop.coffee ?? false,
+    gossip: stop.gossip ?? false,
   };
 }
 
 // Routes stay in the aisles in front of and beside desks. Chairs never travel
 // with characters. Distances determine travel time, keeping walking speed steady.
-function followRoute(stops: Stop[], elapsed: number): OfficePose {
+function followRoute(stops: Stop[], elapsed: number, loop = true): OfficePose {
   const duration = stops.reduce((total, stop, i) => {
+    if (!loop && i === stops.length - 1) return total;
     const next = stops[(i + 1) % stops.length];
     return (
       total +
@@ -50,7 +78,8 @@ function followRoute(stops: Stop[], elapsed: number): OfficePose {
         0.8
     );
   }, 0);
-  let time = elapsed % duration;
+  if (!loop && elapsed >= duration) return rest(stops[stops.length - 1]);
+  let time = loop ? elapsed % duration : elapsed;
   for (let i = 0; i < stops.length; i++) {
     const stop = stops[i],
       next = stops[(i + 1) % stops.length];
@@ -80,6 +109,7 @@ function followRoute(stops: Stop[], elapsed: number): OfficePose {
         waving: false,
         coffee: false,
         typing: false,
+        gossip: false,
       };
     }
     time -= travel;
@@ -91,7 +121,32 @@ export function officePose(
   phase: Phase,
   elapsed: number,
   index: number,
+  count = 2,
 ): OfficePose {
+  if (phase === "finished") {
+    const { breakZ } = officeLayout(count);
+    const [x, z] = workstationPosition(index, count);
+    const destination: Point = [
+      (index % 2 === 0 ? 0.15 : 2.6) - x,
+      breakZ + Math.floor(index / 2) * 1.35 - z,
+    ];
+    return followRoute(
+      [
+        { point: [1.96, 1.1], seconds: 0.4, heading: 0 },
+        { point: [1.96, 2.25], seconds: 0, heading: 0 },
+        { point: [1.96, destination[1]], seconds: 0, heading: 0 },
+        {
+          point: destination,
+          seconds: 0,
+          heading: index % 2 === 0 ? Math.PI / 2 : -Math.PI / 2,
+          gossip: true,
+          coffee: true,
+        },
+      ],
+      elapsed,
+      false,
+    );
+  }
   if (phase === "waiting") {
     return followRoute(
       [
@@ -125,7 +180,7 @@ export function officePose(
       elapsed,
     );
   }
-  if (phase === "finished" || phase === "ready") {
+  if (phase === "ready") {
     return followRoute(
       [
         { point: [1.96, 1.1], seconds: 0.4, heading: 0 },

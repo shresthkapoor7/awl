@@ -68,6 +68,19 @@
   box-shadow: 0 5px 16px #0005;
   max-width: 210px;
 }
+.station-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: #77746a;
+  stroke-width: 1;
+}
+.station-connectors path {
+  visibility: hidden;
+}
 .station-label-title {
   display: flex;
   align-items: center;

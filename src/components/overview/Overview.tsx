@@ -12,6 +12,7 @@ export default function Overview({ agents, onSelect }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const office = useRef<ReturnType<typeof createOffice> | null>(null);
   const labels = useRef(new Map<string, HTMLButtonElement>());
+  const connectors = useRef(new Map<string, SVGPathElement>());
   const current = useRef({ agents, onSelect });
   current.current = { agents, onSelect };
   const [failed, setFailed] = useState(false);
@@ -24,14 +25,67 @@ export default function Overview({ agents, onSelect }: Props) {
       office.current = createOffice(host.current, current.current.agents, {
         onSelect: (id) => current.current.onSelect(id),
         onFailure: () => setFailed(true),
-        onLabels: (positions) =>
-          positions.forEach(({ id, x, y, visible }) => {
-            const label = labels.current.get(id);
-            if (!label) return;
-            label.style.left = `${x}px`;
-            label.style.top = `${y}px`;
-            label.style.visibility = visible ? "visible" : "hidden";
-          }),
+        onLabels: (positions) => {
+          // Gathering agents can project close together. Keep their labels
+          // readable instead of stacking the completed cards over each other.
+          const placed: {
+            left: number;
+            right: number;
+            top: number;
+            bottom: number;
+          }[] = [];
+          positions
+            .sort((a, b) => a.y - b.y)
+            .forEach(({ id, x, y, visible }) => {
+              const label = labels.current.get(id);
+              if (!label) return;
+              const width = label.offsetWidth;
+              const top = y - label.offsetHeight;
+              const nearby = placed.filter(
+                (rect) => top < rect.bottom + 8 && y + 8 > rect.top,
+              );
+              const candidates = [
+                x - width / 2,
+                ...nearby.flatMap((rect) => [
+                  rect.left - width - 8,
+                  rect.right + 8,
+                ]),
+              ]
+                .filter(
+                  (left) =>
+                    left >= 8 &&
+                    left + width <= (host.current?.clientWidth ?? 0) - 8,
+                )
+                .sort(
+                  (a, b) =>
+                    Math.abs(a + width / 2 - x) - Math.abs(b + width / 2 - x),
+                );
+              const left =
+                candidates.find((candidate) =>
+                  nearby.every(
+                    (rect) =>
+                      candidate + width + 7 < rect.left ||
+                      candidate > rect.right + 7,
+                  ),
+                ) ?? x - width / 2;
+              label.style.left = `${left + width / 2}px`;
+              label.style.top = `${y}px`;
+              label.style.visibility = visible ? "visible" : "hidden";
+              const connector = connectors.current.get(id);
+              if (connector) {
+                connector.style.visibility =
+                  visible && Math.abs(left + width / 2 - x) > 1
+                    ? "visible"
+                    : "hidden";
+                connector.setAttribute(
+                  "d",
+                  `M ${x} ${y + 10} L ${x} ${y + 4} L ${left + width / 2} ${y + 4} L ${left + width / 2} ${y}`,
+                );
+              }
+              if (visible)
+                placed.push({ left, right: left + width, top, bottom: y });
+            });
+        },
       });
       setReady(true);
     } catch {
@@ -100,6 +154,17 @@ export default function Overview({ agents, onSelect }: Props) {
           <>
             <div ref={host} className="office-canvas" />
             <div className="station-labels">
+              <svg className="station-connectors" aria-hidden="true">
+                {agents.map((agent) => (
+                  <path
+                    key={agent.id}
+                    ref={(element) => {
+                      if (element) connectors.current.set(agent.id, element);
+                      else connectors.current.delete(agent.id);
+                    }}
+                  />
+                ))}
+              </svg>
               {agents.map((agent) => (
                 <button
                   key={agent.id}

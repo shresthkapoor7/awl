@@ -4,6 +4,8 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import type { Agent, Phase } from "../../demo";
 import {
   officePose,
+  officeLayout,
+  workstationPosition,
   SEAT,
   SEATED_HEIGHT,
   STANDING_HEIGHT,
@@ -32,6 +34,7 @@ type Station = {
   legs: THREE.Group[];
   knees: THREE.Group[];
   mug: THREE.Group;
+  bubble: THREE.Group;
   elapsed: number;
   index: number;
   pose: OfficePose;
@@ -208,6 +211,7 @@ export function createOffice(
   scene.add(room);
   let stations: Station[] = [];
   let roomDepth = 9;
+  let roomCenterZ = 0;
   let disposed = false;
   let frame = 0;
   let lastTime = 0;
@@ -227,15 +231,16 @@ export function createOffice(
     disposeGroup(room);
     for (const station of stations) station.screen.dispose();
     stations = [];
-    const rows = Math.max(1, Math.ceil(agents.length / 2));
-    roomDepth = Math.max(9, rows * 3.8 + 4);
-    box(room, [12, 0.25, roomDepth], [0, -0.22, 0], "#a38164", 0.06);
-    box(room, [12, 0.08, roomDepth], [0, -0.04, 0], "#d8c5a8");
-    box(room, [12, 2.5, 0.16], [0, 1.2, -roomDepth / 2], "#d5e0d0");
-    box(room, [0.16, 2.5, roomDepth], [-6, 1.2, 0], "#eee7d9");
+    const layout = officeLayout(agents.length);
+    roomDepth = layout.depth;
+    roomCenterZ = layout.centerZ;
+    box(room, [12, 0.25, roomDepth], [0, -0.22, roomCenterZ], "#a38164", 0.06);
+    box(room, [12, 0.08, roomDepth], [0, -0.04, roomCenterZ], "#d8c5a8");
+    box(room, [12, 2.5, 0.16], [0, 1.2, layout.back], "#d5e0d0");
+    box(room, [0.16, 2.5, roomDepth], [-6, 1.2, roomCenterZ], "#eee7d9");
     for (let i = -5.25; i < 6; i += 0.75)
-      box(room, [0.012, 0.006, roomDepth], [i, 0.004, 0], "#b8a385");
-    for (let z = -roomDepth / 2 + 1.6; z < roomDepth / 2; z += 1.8)
+      box(room, [0.012, 0.006, roomDepth], [i, 0.004, roomCenterZ], "#b8a385");
+    for (let z = layout.back + 1.6; z < layout.front; z += 1.8)
       for (let i = -6; i < 6; i += 0.75)
         box(
           room,
@@ -245,7 +250,7 @@ export function createOffice(
         );
     // Daylight windows and a planted shelf give the cutaway room some life.
     for (const z of [-2.8, -0.3, 2.2]) {
-      if (z > roomDepth / 2 - 0.7) continue;
+      if (z > layout.front - 0.7) continue;
       box(room, [0.08, 1.35, 1.85], [-5.87, 1.48, z], "#faf4e8", 0.03);
       box(room, [0.02, 1.15, 1.65], [-5.815, 1.48, z], "#a6d3df");
       box(room, [0.03, 1.15, 0.045], [-5.79, 1.48, z], "#fff8ed");
@@ -255,104 +260,112 @@ export function createOffice(
     box(
       room,
       [3.5, 1.03, 0.07],
-      [-0.9, 1.55, -roomDepth / 2 + 0.13],
+      [-0.9, 1.55, layout.back + 0.13],
       "#b68a5d",
       0.035,
     );
-    box(
-      room,
-      [3.3, 0.86, 0.03],
-      [-0.9, 1.55, -roomDepth / 2 + 0.18],
-      "#f4f1df",
-    );
+    box(room, [3.3, 0.86, 0.03], [-0.9, 1.55, layout.back + 0.18], "#f4f1df");
     for (let i = 0; i < 3; i++) {
       box(
         room,
         [0.55, 0.32, 0.012],
-        [-1.94 + i * 0.84, 1.61, -roomDepth / 2 + 0.205],
+        [-1.94 + i * 0.84, 1.61, layout.back + 0.205],
         ["#e8bd78", "#99bfae", "#b8c8db"][i],
       );
       box(
         room,
         [0.35, 0.018, 0.015],
-        [-1.94 + i * 0.84, 1.65, -roomDepth / 2 + 0.22],
+        [-1.94 + i * 0.84, 1.65, layout.back + 0.22],
         "#697e72",
       );
       box(
         room,
         [0.25, 0.018, 0.015],
-        [-1.99 + i * 0.84, 1.54, -roomDepth / 2 + 0.22],
+        [-1.99 + i * 0.84, 1.54, layout.back + 0.22],
         "#697e72",
       );
     }
     box(
       room,
       [2.1, 0.85, 0.75],
-      [3.65, 0.43, -roomDepth / 2 + 0.65],
+      [3.65, 0.43, layout.back + 0.65],
       "#6a8c7b",
       0.04,
     );
     box(
       room,
       [2.2, 0.08, 0.86],
-      [3.65, 0.88, -roomDepth / 2 + 0.65],
+      [3.65, 0.88, layout.back + 0.65],
       "#d2aa7b",
       0.025,
     );
     for (const x of [3.2, 4.1])
-      box(
-        room,
-        [0.36, 0.035, 0.05],
-        [x, 0.6, -roomDepth / 2 + 1.04],
-        "#d4be8c",
-      );
+      box(room, [0.36, 0.035, 0.05], [x, 0.6, layout.back + 1.04], "#d4be8c");
     // Coffee corner, with an actual leafy plant rather than gray spikes.
     box(
       room,
       [0.44, 0.56, 0.4],
-      [3.95, 1.19, -roomDepth / 2 + 0.57],
+      [3.95, 1.19, layout.back + 0.57],
       "#363d3e",
       0.045,
     );
     box(
       room,
       [0.29, 0.2, 0.025],
-      [3.95, 1.21, -roomDepth / 2 + 0.78],
+      [3.95, 1.21, layout.back + 0.78],
       "#91b8ad",
       0.02,
     );
-    cylinder(room, 0.085, 0.14, [3.95, 1.01, -roomDepth / 2 + 0.83], "#f3e8d8");
-    plant(room, -4.7, -roomDepth / 2 + 0.85, 1.2, "#bd7957");
-    plant(room, 5, -roomDepth / 2 + 0.9, 1.3, "#e6d7bd");
-    plant(room, -5.0, roomDepth / 2 - 0.7, 0.9, "#718e80");
-    plant(room, 4.95, roomDepth / 2 - 0.7, 0.95, "#bd7957");
+    cylinder(room, 0.085, 0.14, [3.95, 1.01, layout.back + 0.83], "#f3e8d8");
+    plant(room, -4.7, layout.back + 0.85, 1.2, "#bd7957");
+    plant(room, 5, layout.back + 0.9, 1.3, "#e6d7bd");
+    plant(room, -5.0, layout.front - 0.7, 0.9, "#718e80");
+    plant(room, 5.25, layout.breakZ - 1.15, 0.8, "#bd7957");
+    // The break area is beyond the desk aisles, so gathering agents stay clear
+    // of active workstations. A blue bottle and two taps read as a water cooler.
+    const cooler = new THREE.Group();
+    cooler.position.set(layout.cooler[0], 0, layout.cooler[1]);
+    room.add(cooler);
+    box(cooler, [0.74, 1.15, 0.65], [0, 0.6, 0], "#eee9dc", 0.07);
+    box(cooler, [0.52, 0.36, 0.035], [0, 0.83, 0.335], "#40565d", 0.03);
+    box(cooler, [0.55, 0.06, 0.18], [0, 0.61, 0.37], "#8a9da0", 0.02);
+    for (const [x, color] of [
+      [-0.14, "#79a9c8"],
+      [0.14, "#cb8a73"],
+    ] as const) {
+      box(cooler, [0.08, 0.09, 0.12], [x, 0.87, 0.39], color, 0.02);
+    }
+    cylinder(cooler, 0.16, 0.15, [0, 1.23, 0], "#6b9db1");
+    cylinder(cooler, 0.3, 0.58, [0, 1.59, 0], "#92c4da");
+    sphere(cooler, 0.3, [0, 1.86, 0], "#92c4da").scale.y = 0.35;
+    for (const y of [1.36, 1.76])
+      cylinder(cooler, 0.315, 0.035, [0, y, 0], "#b2d6e4");
     // A small lounge at the front, outside workstation walking routes.
     box(
       room,
       [2.6, 0.025, 1.25],
-      [-3.15, 0.018, roomDepth / 2 - 0.8],
+      [-3.15, 0.018, layout.front - 0.8],
       "#91ada0",
       0.1,
     );
     box(
       room,
       [2.3, 0.25, 0.68],
-      [-3.15, 0.43, roomDepth / 2 - 0.8],
+      [-3.15, 0.43, layout.front - 0.8],
       "#c98763",
       0.11,
     );
     box(
       room,
       [2.3, 0.5, 0.17],
-      [-3.15, 0.78, roomDepth / 2 - 0.53],
+      [-3.15, 0.78, layout.front - 0.53],
       "#c98763",
       0.075,
     );
     for (const x of [-4.1, -2.2])
-      box(room, [0.1, 0.35, 0.42], [x, 0.18, roomDepth / 2 - 0.8], "#765f4b");
+      box(room, [0.1, 0.35, 0.42], [x, 0.18, layout.front - 0.8], "#765f4b");
     agents.forEach((agent, index) => {
-      const x = index % 2 === 0 ? -2.45 : 2.1;
-      const z = (Math.floor(index / 2) - (rows - 1) / 2) * 3.8;
+      const [x, z] = workstationPosition(index, agents.length);
       const group = new THREE.Group();
       group.position.set(x, 0, z);
       group.userData.agentId = agent.id;
@@ -469,6 +482,12 @@ export function createOffice(
       mug.position.set(0, -0.21, 0.1);
       cylinder(mug, 0.09, 0.16, [0, 0, 0], "#cb865d");
       cylinder(mug, 0.07, 0.008, [0, 0.084, 0], "#513b2b");
+      const bubble = new THREE.Group();
+      group.add(bubble);
+      sphere(bubble, 0.31, [0, 0, 0], "#f8f3e8").scale.set(1.25, 0.6, 0.22);
+      sphere(bubble, 0.085, [-0.2, -0.16, 0], "#f8f3e8").scale.z = 0.6;
+      for (const x of [-0.15, 0, 0.15])
+        sphere(bubble, 0.035, [x, 0, 0.07], "#52796b");
       const signal = box(
         group,
         [0.08, 0.08, 0.08],
@@ -487,15 +506,28 @@ export function createOffice(
         legs,
         knees,
         mug,
+        bubble,
         elapsed: 0,
         index,
-        pose: officePose(agent.phase, 0, index),
-        seated: officePose(agent.phase, 0, index).seated,
+        pose: officePose(
+          agent.phase,
+          motion.matches && agent.phase === "finished" ? 1e6 : 0,
+          index,
+          agents.length,
+        ),
+        seated: officePose(
+          agent.phase,
+          motion.matches && agent.phase === "finished" ? 1e6 : 0,
+          index,
+          agents.length,
+        ).seated,
         screen,
         signal,
         anchor: new THREE.Vector3(x + SEAT[0], 2.75, z + SEAT[1]),
       });
     });
+    controls.target.set(0, 0.5, roomCenterZ);
+    controls.update();
     updateAgents(agents);
     resize();
   }
@@ -511,7 +543,12 @@ export function createOffice(
       const station = stations[i];
       if (station.phase !== agents[i].phase) station.elapsed = 0;
       station.phase = agents[i].phase;
-      station.pose = officePose(station.phase, station.elapsed, station.index);
+      station.pose = officePose(
+        station.phase,
+        motion.matches && station.phase === "finished" ? 1e6 : station.elapsed,
+        station.index,
+        stations.length,
+      );
       station.seated = station.pose.seated;
       applyPose(station, 0, true);
       station.screen.emissiveIntensity = station.phase === "new" ? 0.02 : 0.2;
@@ -525,6 +562,8 @@ export function createOffice(
   function render(projectLabels = true) {
     if (disposed) return;
     camera.updateMatrixWorld();
+    for (const station of stations)
+      station.bubble.quaternion.copy(camera.quaternion);
     renderer.render(scene, camera);
     if (!projectLabels) return;
     const { width, height } = host.getBoundingClientRect();
@@ -616,9 +655,26 @@ export function createOffice(
       station.elbows[1].rotation.x = -1.4;
       station.mug.rotation.x = 2;
     }
+    if (pose.gossip) {
+      const beat = motion.matches
+        ? 0
+        : Math.sin(station.elapsed * 2.8 + station.index * Math.PI);
+      station.arms[0].rotation.set(-0.55 + beat * 0.2, 0, -0.4);
+      station.elbows[0].rotation.x = -0.7 + beat * 0.2;
+      station.person.rotation.z = beat * 0.025;
+      // Alternate telling the story and listening; no fake workflow messages.
+      station.bubble.visible = motion.matches || beat > -0.3;
+      station.bubble.position.set(pose.x + 0.5, 2.15 + beat * 0.025, pose.z);
+    } else {
+      station.bubble.visible = false;
+    }
     station.mug.visible = pose.coffee;
     station.head.rotation.set(
-      pose.typing ? 0.1 + Math.sin(station.elapsed * 9) * 0.025 : 0,
+      pose.typing
+        ? 0.1 + Math.sin(station.elapsed * 9) * 0.025
+        : pose.gossip && !motion.matches
+          ? Math.sin(station.elapsed * 2.8) * 0.07
+          : 0,
       motion.matches
         ? 0
         : Math.sin(station.elapsed * 0.85 + station.index) * 0.14,
@@ -641,7 +697,12 @@ export function createOffice(
     lastTime = time;
     for (const station of stations) {
       station.elapsed += delta;
-      station.pose = officePose(station.phase, station.elapsed, station.index);
+      station.pose = officePose(
+        station.phase,
+        motion.matches && station.phase === "finished" ? 1e6 : station.elapsed,
+        station.index,
+        stations.length,
+      );
       applyPose(station, delta);
     }
     // Thirty frames per second is enough for the office; labels follow people.
@@ -654,7 +715,7 @@ export function createOffice(
   function resetCamera() {
     camera.position.set(11, 12, 14);
     camera.zoom = 1;
-    controls.target.set(0, 0.5, 0);
+    controls.target.set(0, 0.5, roomCenterZ);
     controls.update();
     resize();
   }
@@ -712,6 +773,12 @@ export function createOffice(
     schedule();
   }
   const cameraChanged = () => render();
+  const visibilityChanged = () => {
+    schedule();
+    // Flush the last pose before pausing; labels and geometry share the same
+    // frame even when visibility changes between the throttled renders.
+    render();
+  };
   controls.addEventListener("change", cameraChanged);
   canvas.addEventListener("pointerdown", down);
   canvas.addEventListener("pointerup", up);
@@ -719,7 +786,7 @@ export function createOffice(
   canvas.addEventListener("pointercancel", cancel);
   canvas.addEventListener("lostpointercapture", cancel);
   canvas.addEventListener("webglcontextlost", contextLost);
-  document.addEventListener("visibilitychange", schedule);
+  document.addEventListener("visibilitychange", visibilityChanged);
   motion.addEventListener("change", motionChanged);
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -742,7 +809,7 @@ export function createOffice(
       cancelAnimationFrame(frame);
       observer.disconnect();
       controls.dispose();
-      document.removeEventListener("visibilitychange", schedule);
+      document.removeEventListener("visibilitychange", visibilityChanged);
       motion.removeEventListener("change", motionChanged);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointerup", up);
