@@ -5,15 +5,13 @@
     BlinkMacSystemFont,
     sans-serif;
   color: #d4d4d4;
-  background: #0d0d0d;
+  background: var(--base);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --base: #0d0d0d;
-  --sidebar: #111111;
-  --panel: #141414;
-  --raised: #1c1c1c;
-  --border: #262626;
+  --base: #000000;
+  --hover: #0d0d0d;
+  --border: #222222;
   --text: #d4d4d4;
   --muted: #999999;
   --accent: #999999;
@@ -150,7 +148,7 @@ strong {
   flex-shrink: 0;
 }
 .icon-button:hover:not(:disabled) {
-  background: var(--raised);
+  background: var(--hover);
   color: var(--text);
 }
 .sidebar {
@@ -159,7 +157,7 @@ strong {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--sidebar);
+  background: var(--base);
   border-right: 1px solid var(--border);
   padding: 20px 12px 0;
 }
@@ -193,14 +191,14 @@ strong {
   gap: 12px;
   padding: 0 12px;
   min-height: 44px;
-  background: #262626;
-  border: 1px solid #333333;
+  background: var(--base);
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
 }
 .new-agent:hover {
-  background: #333333;
+  background: var(--hover);
 }
 .search-trigger {
   display: flex;
@@ -216,7 +214,7 @@ strong {
 }
 .search-trigger:hover {
   color: var(--text);
-  background: var(--raised);
+  background: var(--hover);
 }
 .search-trigger kbd {
   margin-left: auto;
@@ -271,11 +269,11 @@ strong {
   position: relative;
 }
 .agent-item:hover {
-  background: #262626;
+  background: var(--hover);
 }
 .agent-item.selected {
-  background: #262626;
-  border-color: transparent;
+  background: var(--base);
+  border-color: var(--border);
 }
 .agent-glyph {
   color: var(--muted);
@@ -337,7 +335,7 @@ strong {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid #555555;
+  border: 1px solid var(--border);
   color: var(--accent);
   font-size: 19px;
 }
@@ -434,7 +432,7 @@ strong {
 }
 .user-message {
   padding: 16px 20px;
-  background: #262626;
+  background: var(--base);
   border: 1px solid var(--border);
   border-radius: 12px;
 }
@@ -538,8 +536,8 @@ strong {
 }
 .handoff-card {
   margin-top: 20px;
-  border: 1px solid #333333;
-  background: #1a1a1a;
+  border: 1px solid var(--border);
+  background: var(--base);
   border-radius: 12px;
   padding: 20px;
 }
@@ -567,15 +565,15 @@ strong {
   gap: 12px;
   padding: 0 16px;
   min-height: 44px;
-  border: 1px solid #383838;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #262626;
+  background: var(--base);
   color: var(--text);
   font-size: 12px;
   font-weight: 500;
 }
 .primary-button:hover:not(:disabled) {
-  background: #333333;
+  background: var(--hover);
 }
 .handoff-card .primary-button {
   width: 100%;
@@ -587,7 +585,7 @@ strong {
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--panel);
+  background: var(--base);
 }
 .completion-title {
   display: flex;
@@ -611,13 +609,13 @@ strong {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--border);
-  background: #262626;
+  background: var(--base);
   border-radius: 8px;
   text-align: left;
   margin-top: 16px;
 }
 .saved-capability:hover {
-  background: #333333;
+  background: var(--hover);
 }
 .saved-capability > span:nth-child(2) {
   display: flex;
@@ -660,7 +658,7 @@ strong {
 .composer {
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #1a1a1a;
+  background: var(--base);
   padding: 12px 12px 8px;
 }
 .composer:focus-within {
@@ -695,12 +693,12 @@ strong {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  background: #262626;
+  background: var(--base);
   color: var(--text);
   border-radius: 8px;
 }
 .send-button:disabled {
-  background: #262626;
+  background: var(--base);
   color: #666666;
   opacity: 1;
 }
@@ -708,7 +706,7 @@ strong {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #1a1a1a;
+  background: var(--base);
   min-height: 0;
   min-width: 0;
 }
@@ -774,7 +772,7 @@ strong {
   color: var(--muted);
   min-width: 0;
   flex: 1;
-  background: #141414;
+  background: var(--base);
 }
 .address span {
   overflow: hidden;
@@ -788,7 +786,7 @@ strong {
   padding: 12px 20px;
   min-height: 44px;
   border-bottom: 1px solid var(--border);
-  background: #262626;
+  background: var(--base);
   color: #b8b8b8;
   font-size: 11px;
 }
@@ -798,7 +796,7 @@ strong {
   gap: 8px;
 }
 .control-strip.human {
-  background: #1a1a1a;
+  background: var(--base);
   color: #d4d4d4;
 }
 .control-detail {
@@ -818,7 +816,7 @@ strong {
   justify-content: space-between;
   align-items: center;
   padding: 20px 28px;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border);
 }
 .portal-brand {
   display: flex;
@@ -887,7 +885,7 @@ strong {
   align-items: center;
   gap: 12px;
   padding: 20px 0;
-  border-bottom: 1px solid #333333;
+  border-bottom: 1px solid var(--border);
   margin-top: 12px;
 }
 .member-avatar {
@@ -896,9 +894,9 @@ strong {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid #555555;
+  border: 1px solid var(--border);
   border-radius: 50%;
-  background: #333333;
+  background: var(--base);
   color: #d4d4d4;
   font-size: 12px;
 }
@@ -950,10 +948,10 @@ strong {
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  border: 1px solid #333333;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0 12px;
-  background: #262626;
+  background: var(--base);
   font-size: 11px;
 }
 .mock-field > span {
@@ -961,8 +959,8 @@ strong {
   font: 11px var(--mono);
 }
 .verification {
-  border: 1px solid #333333;
-  background: #141414;
+  border: 1px solid var(--border);
+  background: var(--base);
   padding: 20px;
   border-radius: 8px;
   margin-top: 24px;
@@ -1025,13 +1023,13 @@ strong {
   gap: 8px;
   padding: 0 12px;
   color: #d4d4d4;
-  background: #333333;
-  border: 1px solid #555555;
+  background: var(--base);
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 11px;
 }
 .portal-button:hover:not(:disabled) {
-  background: #555555;
+  background: var(--hover);
 }
 .portal-footnote {
   color: #b8b8b8;
@@ -1071,7 +1069,7 @@ strong {
   gap: 16px;
   margin-top: 24px;
   padding: 24px 20px;
-  border: 1px solid #333333;
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 .statement-card > div {
@@ -1122,7 +1120,7 @@ strong {
   border-radius: 12px;
   overflow: hidden;
   margin-top: 24px;
-  background: #141414;
+  background: var(--base);
 }
 .code-header {
   display: flex;
@@ -1198,7 +1196,7 @@ strong {
   text-align: left;
 }
 .starter:hover {
-  background: var(--raised);
+  background: var(--hover);
 }
 .browser-empty {
   display: flex;
@@ -1218,7 +1216,7 @@ strong {
   align-items: center;
   justify-content: center;
   color: #b8b8b8;
-  background: #262626;
+  background: var(--base);
 }
 .browser-empty h2 {
   font-size: 19px;
