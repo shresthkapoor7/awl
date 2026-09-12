@@ -1,3 +1,4 @@
+import { capabilityRead } from "../dist-electron/electron/tools/capability-read.cjs";
 import assert from "node:assert/strict";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -62,6 +63,17 @@ try {
   );
   assert.equal(saved.status, "draft");
   assert.equal(saved.source_chat_id, "one");
+  const read = (args) =>
+    dispatch(capabilityRead, JSON.stringify(args), context);
+  assert.deepEqual((await read({ id: null, version: null })).data.ids, [
+    "lookup",
+  ]);
+  assert.equal((await read({ id: "lookup", version: null })).data.version, 2);
+  assert.equal((await read({ id: "lookup", version: 1 })).data.version, 1);
+  assert.equal(
+    (await read({ id: "lookup", version: 9 })).error.code,
+    "CAPABILITY_NOT_FOUND",
+  );
   console.log(
     "Passed: capability schema, parameterization, path constraints, immutable versions, conflicting writes.",
   );
