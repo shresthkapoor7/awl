@@ -55,6 +55,31 @@ try {
     ).error.code,
     "TAB_NOT_FOUND",
   );
+  const listed = await call("browser-tabs", "browserTabs", {
+    action: "list",
+    tab_id: null,
+  });
+  assert.equal(listed.data.activeTabId, tabId);
+  assert.equal(
+    (
+      await call("browser-tabs", "browserTabs", {
+        action: "select",
+        tab_id: "missing",
+      })
+    ).error.code,
+    "TAB_NOT_FOUND",
+  );
+  assert.equal(
+    (
+      await call(
+        "browser-tabs",
+        "browserTabs",
+        { action: "close", tab_id: tabId },
+        "other",
+      )
+    ).error.code,
+    "TAB_NOT_FOUND",
+  );
   console.log(
     "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
   );
