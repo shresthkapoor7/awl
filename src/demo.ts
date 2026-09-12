@@ -1,6 +1,17 @@
 export type Phase =
   "waiting" | "human" | "ready" | "replaying" | "finished" | "new";
 export type Message = { id: string; role: "user" | "assistant"; text: string };
+export type Capability = {
+  id: string;
+  version: number;
+  name: string;
+  description: string;
+  kind: "onboarding" | "statement";
+};
+export type CapabilityRun = {
+  capability: Capability;
+  inputs: { member_id: string };
+};
 export type Agent = {
   id: string;
   name: string;
@@ -9,7 +20,25 @@ export type Agent = {
   phase: Phase;
   verified: boolean;
   messages: Message[];
+  capabilityRun?: CapabilityRun;
 };
+
+export const demoCapabilities: Capability[] = [
+  {
+    id: "find_latest_statement",
+    version: 1,
+    name: "Find latest statement",
+    description: "Locate a member’s most recent savings statement.",
+    kind: "statement",
+  },
+  {
+    id: "prepare_savings_account",
+    version: 1,
+    name: "Prepare savings account",
+    description: "Prepare an account request and stop at the review screen.",
+    kind: "onboarding",
+  },
+];
 
 export const initialAgents: Agent[] = [
   {

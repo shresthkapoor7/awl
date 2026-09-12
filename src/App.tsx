@@ -12,6 +12,7 @@ import {
   Plus,
   Search,
   Workflow,
+  Code2,
 } from "lucide-react";
 import {
   lazy,
@@ -21,16 +22,23 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { initialAgents, phaseLabel, type Agent } from "./demo";
+import {
+  initialAgents,
+  phaseLabel,
+  type Agent,
+  type CapabilityRun,
+} from "./demo";
+import { Capabilities } from "./components/Capabilities";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
 import { IconButton, Mark, StatusDot } from "./components/ui";
 
 const Overview = lazy(() => import("./components/overview/Overview"));
+const workspaceViews = ["chat", "overview", "capabilities"] as const;
 
 export function App() {
-  const [view, setView] = useState<"chat" | "overview">("chat");
+  const [view, setView] = useState<(typeof workspaceViews)[number]>("chat");
   const [agents, setAgents] = useState<Agent[]>(() =>
     structuredClone(initialAgents),
   );
@@ -91,6 +99,28 @@ export function App() {
       setSelectedId(id);
       setTab("browser");
     }
+  }
+  function runCapability(run: CapabilityRun) {
+    const id = crypto.randomUUID();
+    setAgents((current) => [
+      ...current,
+      {
+        id,
+        name: `${run.capability.name} · ${run.inputs.member_id}`,
+        description: `Capability run · v${run.capability.version} · demo`,
+        kind: run.capability.kind,
+        phase: "replaying",
+        verified: false,
+        messages: [],
+        capabilityRun: run,
+      },
+    ]);
+    setSelectedId(id);
+    setSearch("");
+    setView("chat");
+    setTab("browser");
+    setMobileView("chat");
+    setBrowserOpen(true);
   }
   function takeControl() {
     updateAgent({ phase: "human" });
@@ -197,7 +227,13 @@ export function App() {
         <div className="titlebar-center">
           <span>Workspace</span>
           <ChevronRight size={12} />
-          <span>{view === "overview" ? "Overview" : agent.name}</span>
+          <span>
+            {view === "chat"
+              ? agent.name
+              : view === "overview"
+                ? "Overview"
+                : "Capabilities"}
+          </span>
         </div>
         <div
           className="workspace-tabs"
@@ -207,14 +243,18 @@ export function App() {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
               return;
             event.preventDefault();
+            const index = workspaceViews.indexOf(view);
             const next =
-              event.key === "Home"
-                ? "chat"
-                : event.key === "End"
-                  ? "overview"
-                  : view === "chat"
-                    ? "overview"
-                    : "chat";
+              workspaceViews[
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? workspaceViews.length - 1
+                    : (index +
+                        (event.key === "ArrowRight" ? 1 : -1) +
+                        workspaceViews.length) %
+                      workspaceViews.length
+              ];
             setView(next);
             document.getElementById(`${next}-tab`)?.focus();
           }}
@@ -241,9 +281,20 @@ export function App() {
             <Boxes size={15} />
             Overview
           </button>
+          <button
+            id="capabilities-tab"
+            role="tab"
+            aria-selected={view === "capabilities"}
+            aria-controls="capabilities-view"
+            tabIndex={view === "capabilities" ? 0 : -1}
+            onClick={() => setView("capabilities")}
+          >
+            <Code2 size={15} />
+            Capabilities
+          </button>
         </div>
         <IconButton
-          style={{ visibility: view === "overview" ? "hidden" : "visible" }}
+          style={{ visibility: view !== "chat" ? "hidden" : "visible" }}
           label={browserOpen ? "Hide browser" : "Show browser"}
           onClick={() => {
             setBrowserOpen(!browserOpen);
@@ -440,6 +491,7 @@ export function App() {
           />
         </Suspense>
       )}
+      {view === "capabilities" && <Capabilities onRun={runCapability} />}
     </div>
   );
 }

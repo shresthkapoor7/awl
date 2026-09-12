@@ -29,6 +29,8 @@ An optional 3D office overview will show agents' activity and highlight where at
 Electron workspace with a live embedded Chromium browser. Enter a website in the address bar and use it directly beside chat. Each agent has its own isolated browser session; tabs, forms, navigation history, and cookies stay alive when switching agents, collapsing the pane, or opening the office. Popups open as tabs in the same session, including opener-based sign-in flows.
 
 Chat responses, handoff, and capability replay are still explicitly labeled demos. They do not control the live browser, call OpenAI, or generate automation code. Browser sessions are held in memory for the current app window and are cleared when it closes. Browser views survive a UI reload, but conversation demo state and newly created agent entries are not persisted yet; reload returns to the built-in demo agents.
+
+The **Capabilities** tab lists example workflows. Enter a member ID and select **Run** to open a fresh chat with its own browser session, pinned capability version, inputs, and simulated run status. Each launch creates a separate agent; it does not restart the discovery conversation. These examples are not generated or executable capabilities yet.
 The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Agents sit with articulated legs, type during replay, pace when waiting, and gather to gossip at the water cooler after completion. The room has warm wood, daylight, and leafy plants. Motion reflects the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
 
 ## Run locally

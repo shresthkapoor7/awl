@@ -17,6 +17,11 @@ const errors = [];
 
 try {
   const page = await app.firstWindow();
+  await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.webContents.setBackgroundThrottling(false);
+    window.hide();
+  });
   page.setDefaultTimeout(10000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page
@@ -218,6 +223,131 @@ try {
       (el) => el.getBoundingClientRect().right <= window.innerWidth,
     ),
     true,
+  );
+
+  // Capability launches bind inputs to new chats, leaving prior sessions intact.
+  const libraryTab = page.getByRole("tab", {
+    name: "Capabilities",
+    exact: true,
+  });
+  await draft.fill("Keep this discovery draft");
+  const previousCount = await page.locator(".agent-item").count();
+  await libraryTab.click();
+  await page
+    .getByRole("heading", { name: "Capabilities", exact: true })
+    .waitFor();
+  assert.equal(await dock.isVisible(), false);
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+  );
+  await libraryTab.press("ArrowRight");
+  assert.equal(
+    await page
+      .getByRole("tab", { name: "Chat", exact: true })
+      .getAttribute("aria-selected"),
+    "true",
+  );
+  assert.equal(await draft.inputValue(), "Keep this discovery draft");
+  await page.getByRole("tab", { name: "Chat", exact: true }).press("End");
+  assert.equal(await libraryTab.getAttribute("aria-selected"), "true");
+  const statementCard = page.locator(".capability-entry").filter({
+    has: page.getByRole("heading", {
+      name: "Find latest statement",
+      exact: true,
+    }),
+  });
+  const runStatement = statementCard.getByRole("button", {
+    name: "Run Find latest statement",
+    exact: true,
+  });
+  assert.equal(await runStatement.isDisabled(), true);
+  await statementCard.getByLabel("Member ID", { exact: true }).fill("   ");
+  assert.equal(await runStatement.isDisabled(), true);
+  await statementCard
+    .getByLabel("Member ID", { exact: true })
+    .fill("  20731  ");
+  assert.equal(
+    await statementCard
+      .getByLabel("Member ID", { exact: true })
+      .evaluate((el) => getComputedStyle(el).outlineStyle),
+    "none",
+  );
+  await page.screenshot({ path: "test-results/awl-capabilities-library.png" });
+  await runStatement.click();
+  await page
+    .getByRole("heading", {
+      name: "Find latest statement · 20731",
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(await page.locator(".agent-item").count(), previousCount + 1);
+  await page.getByText("Member ID: 20731", { exact: true }).waitFor();
+  await page.getByText("Demo · capability run · v1", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText("Demo · discovery", { exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page
+      .locator(".conversation")
+      .innerText()
+      .then((text) => text.includes("10482")),
+    false,
+  );
+  await page.getByText("Demo run complete.", { exact: true }).waitFor();
+  await draft.fill("Keep this run separate.");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+
+  await libraryTab.click();
+  const savingsCard = page.locator(".capability-entry").filter({
+    has: page.getByRole("heading", {
+      name: "Prepare savings account",
+      exact: true,
+    }),
+  });
+  await savingsCard.getByLabel("Member ID", { exact: true }).fill("30519");
+  await savingsCard
+    .getByRole("button", { name: "Run Prepare savings account", exact: true })
+    .click();
+  await page
+    .getByRole("heading", {
+      name: "Prepare savings account · 30519",
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(await page.locator(".agent-item").count(), previousCount + 2);
+  await page.getByText("Demo run complete.", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByText("Keep this run separate.", { exact: true }).count(),
+    0,
+  );
+  await page
+    .getByRole("button", { name: "View capability", exact: true })
+    .click();
+  assert.ok(
+    (await page.locator(".code-card pre").innerText()).includes(
+      "prepare_savings_account",
+    ),
+  );
+  await page
+    .getByRole("button", {
+      name: "Find latest statement · 20731 Completed",
+      exact: true,
+    })
+    .click();
+  await page.getByText("Keep this run separate.", { exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Statement lookup Completed", exact: true })
+    .click();
+  await page
+    .getByRole("heading", { name: "Statement lookup", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByText("Keep this run separate.", { exact: true }).count(),
+    0,
   );
   assert.deepEqual(errors, [], `Renderer errors: ${errors.join(", ")}`);
   console.log(

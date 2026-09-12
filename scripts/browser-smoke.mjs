@@ -127,6 +127,11 @@ try {
   await guest.getByRole("button", { name: "Save locally" }).click();
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await waitAttached(0);
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Capabilities", exact: true })
+    .waitFor();
+  await waitAttached(0);
   await page.getByRole("tab", { name: "Chat", exact: true }).click();
   await waitAttached(1);
   assert.equal((await attached())[0].id, originalId);
