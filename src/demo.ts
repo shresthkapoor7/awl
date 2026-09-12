@@ -1,3 +1,4 @@
+import type { AgentChat } from "../shared/agent";
 export type Phase =
   "waiting" | "human" | "ready" | "replaying" | "finished" | "new";
 export type Message = { id: string; role: "user" | "assistant"; text: string };
@@ -21,6 +22,7 @@ export type Agent = {
   verified: boolean;
   messages: Message[];
   capabilityRun?: CapabilityRun;
+  live?: AgentChat;
 };
 
 export const demoCapabilities: Capability[] = [

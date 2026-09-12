@@ -8,6 +8,7 @@ import {
   Link2,
   RotateCcw,
   SquareArrowOutUpRight,
+  Square,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../demo";
@@ -20,6 +21,8 @@ type Props = {
   onResume: () => void;
   onCapability: () => void;
   onReplay: () => void;
+  onStop: () => void;
+  model: string;
 };
 
 export function Conversation({
@@ -29,6 +32,8 @@ export function Conversation({
   onResume,
   onCapability,
   onReplay,
+  onStop,
+  model,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [stepsOpen, setStepsOpen] = useState(false);
@@ -37,6 +42,7 @@ export function Conversation({
   const empty = agent.phase === "new";
   const complete = ["ready", "finished", "replaying"].includes(agent.phase);
   const statement = agent.kind === "statement";
+  const busy = agent.live?.status === "running";
   useEffect(() => {
     setDraft("");
   }, [agent.id]);
@@ -49,7 +55,7 @@ export function Conversation({
   }, [agent.messages.length]);
   function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim()) return;
+    if (!draft.trim() || busy) return;
     onSend(draft.trim());
     setDraft("");
   }
@@ -68,11 +74,21 @@ export function Conversation({
           className={`phase-pill ${agent.phase === "waiting" || agent.phase === "human" ? "attention" : ""}`}
         >
           <span />
-          {phaseLabel(agent.phase)}
+          {busy ? "Working" : phaseLabel(agent.phase)}
         </span>
       </header>
       <div className="conversation-scroll" ref={scroll}>
-        {agent.capabilityRun ? (
+        {agent.live ? (
+          agent.messages.length === 0 && (
+            <div className="welcome">
+              <div className="welcome-mark">
+                <Mark />
+              </div>
+              <h2>What’s the task?</h2>
+              <p>A website and an outcome.</p>
+            </div>
+          )
+        ) : agent.capabilityRun ? (
           <>
             <div className="date-divider">
               <span>Today</span>
@@ -306,12 +322,44 @@ export function Conversation({
             <div className="message-person">
               <strong>{message.role === "user" ? "You" : "awl"}</strong>
               <span>
-                {message.role === "assistant" ? "Preview response" : "Just now"}
+                {message.role === "assistant"
+                  ? agent.live
+                    ? model
+                    : "Preview response"
+                  : "Just now"}
               </span>
             </div>
             <p>{message.text}</p>
           </article>
         ))}
+        {!!agent.live?.tools.length && (
+          <details className="live-tool-activity">
+            <summary>
+              {busy ? "Working" : "Tool activity"} · {agent.live.tools.length}{" "}
+              calls
+            </summary>
+            <ol>
+              {agent.live.tools.map((tool) => (
+                <li key={tool.id}>
+                  <span>{tool.name.replaceAll("_", " ")}</span>
+                  <span>{tool.detail ?? tool.state}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+        {busy && (
+          <p className="live-agent-status" role="status">
+            {agent.live?.tools.at(-1)?.state === "running"
+              ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
+              : "Thinking…"}
+          </p>
+        )}
+        {agent.live?.error && (
+          <p className="live-agent-error" role="alert">
+            {agent.live.error}
+          </p>
+        )}
       </div>
       <div className="composer-area">
         <form className="composer" onSubmit={submit}>
@@ -341,14 +389,25 @@ export function Conversation({
             }}
           />
           <div className="composer-bottom">
-            <button
-              className="send-button"
-              type="submit"
-              aria-label="Send message"
-              disabled={!draft.trim()}
-            >
-              <ArrowUp size={18} />
-            </button>
+            {busy ? (
+              <button
+                className="send-button"
+                type="button"
+                aria-label="Stop agent"
+                onClick={onStop}
+              >
+                <Square size={15} />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                type="submit"
+                aria-label="Send message"
+                disabled={!draft.trim()}
+              >
+                <ArrowUp size={18} />
+              </button>
+            )}
           </div>
         </form>
       </div>

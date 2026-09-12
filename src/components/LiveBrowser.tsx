@@ -20,8 +20,8 @@ import type { BrowserCommand, BrowserState } from "../../shared/browser";
 import { IconButton } from "./ui";
 import "./live-browser.css";
 
-type Props = { agentId: string; visible: boolean };
-export function LiveBrowser({ agentId, visible }: Props) {
+type Props = { agentId: string; visible: boolean; working?: boolean };
+export function LiveBrowser({ agentId, visible, working = false }: Props) {
   const bridge = window.awlBrowser;
   const [state, setState] = useState<BrowserState | null>(null);
   const [address, setAddress] = useState("");
@@ -235,7 +235,7 @@ export function LiveBrowser({ agentId, visible }: Props) {
         />
       )}
       <div className="control-strip">
-        <span>You’re in control</span>
+        <span>{working ? "Agent is working" : "You’re in control"}</span>
         <span className="control-detail">Local browser</span>
       </div>
       {(error || state?.notice) && (

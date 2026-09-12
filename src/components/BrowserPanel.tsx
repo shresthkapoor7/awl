@@ -55,13 +55,15 @@ export function BrowserPanel({ agent, tab, setTab, visible, onReplay }: Props) {
             <Globe2 size={15} />
             Browser
           </button>
-          <button
-            aria-pressed={tab === "capability"}
-            onClick={() => setTab("capability")}
-          >
-            <Code2 size={15} />
-            Capability{finished && <span className="tab-dot" />}
-          </button>
+          {!agent.live && (
+            <button
+              aria-pressed={tab === "capability"}
+              onClick={() => setTab("capability")}
+            >
+              <Code2 size={15} />
+              Capability{finished && <span className="tab-dot" />}
+            </button>
+          )}
         </div>
         {tab === "capability" ? (
           <span className="sample-label">DEMO</span>
@@ -122,7 +124,11 @@ export function BrowserPanel({ agent, tab, setTab, visible, onReplay }: Props) {
           </p>
         </div>
       ) : null}
-      <LiveBrowser agentId={agent.id} visible={visible && tab === "browser"} />
+      <LiveBrowser
+        agentId={agent.id}
+        visible={visible && tab === "browser"}
+        working={agent.live?.status === "running"}
+      />
     </section>
   );
 }

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu } = require("electron");
 const path = require("node:path");
 const { installBrowser } = require("../dist-electron/electron/browser.cjs");
+const { installAgent } = require("../dist-electron/electron/agent-ipc.cjs");
 
 app.setName("awl");
 const iconPath = path.join(__dirname, "assets", "awl.png");
@@ -24,7 +25,8 @@ function createWindow() {
       sandbox: true,
     },
   });
-  installBrowser(window);
+  const browser = installBrowser(window);
+  installAgent(window, browser);
   const developmentUrl = process.env.AWL_DEV_URL;
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());

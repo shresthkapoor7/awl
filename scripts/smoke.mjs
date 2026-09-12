@@ -5,7 +5,7 @@ import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
 
 const executablePath = await prepareElectron();
-const environment = { ...process.env };
+const environment = { ...process.env, AWL_AI_DISABLED: "1" };
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.AWL_DEV_URL;
 const app = await electron.launch({
