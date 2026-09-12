@@ -12,6 +12,7 @@ import {
   type WebPreferences,
 } from "electron";
 import { randomUUID } from "node:crypto";
+import { ToolError, type BrowserAccess } from "./tools/core.cjs";
 import type {
   BrowserState,
   BrowserBounds,
@@ -69,7 +70,7 @@ function normalizeURL(value: unknown): string {
   return new URL(url).href;
 }
 
-export function installBrowser(window: BrowserWindow) {
+export function installBrowser(window: BrowserWindow): BrowserAccess {
   const browsers = new Map<string, AgentBrowser>();
   const launchId = randomUUID();
   let presentation: {
@@ -460,6 +461,7 @@ export function installBrowser(window: BrowserWindow) {
       webviewTag: false,
       navigateOnDragDrop: false,
       safeDialogs: true,
+      backgroundThrottling: false,
     };
     const view = new WebContentsView(
       existing ? { webContents: existing } : { webPreferences: preferences },
@@ -476,6 +478,7 @@ export function installBrowser(window: BrowserWindow) {
       ready: false,
     };
     view.setBackgroundColor("#0a0a0a");
+    view.setBounds({ x: 0, y: 0, width: 1100, height: 780 });
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
@@ -748,4 +751,73 @@ export function installBrowser(window: BrowserWindow) {
       }
     browsers.clear();
   });
+  function target(agentId: string, tabId: string) {
+    if (disposed)
+      throw new ToolError("SESSION_CLOSED", "The browser session has closed.");
+    const tab = browsers.get(agentId)?.tabs.find((item) => item.id === tabId);
+    if (!tab || tab.view.webContents.isDestroyed())
+      throw new ToolError(
+        "TAB_NOT_FOUND",
+        "List this chat’s tabs to get a current tab ID.",
+      );
+    return tab;
+  }
+  return {
+    target: (agentId, tabId) => target(agentId, tabId).view.webContents,
+    tabs(agentId, action, tabId) {
+      const browser = getBrowser(agentId);
+      if (action !== "list") {
+        if (!tabId)
+          throw new ToolError("INVALID_ARGUMENTS", "A tab ID is required.");
+        const tab = target(agentId, tabId);
+        if (action === "select") browser.active = tab.id;
+        else removeTab(browser, tab);
+        publish(browser);
+      }
+      return state(browser);
+    },
+    async start(agentId, rawURL, tabId, signal) {
+      let url: string;
+      try {
+        url = normalizeURL(rawURL);
+      } catch {
+        throw new ToolError(
+          "INVALID_URL",
+          "Use an HTTP or HTTPS URL without embedded credentials.",
+        );
+      }
+      signal.throwIfAborted();
+      const browser = getBrowser(agentId);
+      const tab = tabId
+        ? target(agentId, tabId)
+        : (browser.tabs.find((item) => item.requestedURL === "about:blank") ??
+          createTab(browser));
+      browser.active = tab.id;
+      const wc = tab.view.webContents;
+      const stop = () => {
+        if (!wc.isDestroyed()) wc.stop();
+      };
+      signal.addEventListener("abort", stop, { once: true });
+      try {
+        await load(browser, tab, url);
+        signal.throwIfAborted();
+        if (wc.isDestroyed())
+          throw new ToolError(
+            "TAB_NOT_FOUND",
+            "The tab closed during navigation.",
+          );
+        if (
+          tab.error ||
+          (wc.getURL() === "about:blank" && url !== "about:blank")
+        )
+          throw new ToolError(
+            "NAVIGATION_FAILED",
+            "The page could not be loaded. Inspect tabs before retrying.",
+          );
+        return state(browser);
+      } finally {
+        signal.removeEventListener("abort", stop);
+      }
+    },
+  };
 }
