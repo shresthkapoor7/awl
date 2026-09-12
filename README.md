@@ -60,7 +60,7 @@ For a UI-only preview, run `npm run dev:web` and open the local URL printed by V
 3. Send a goal in chat to start the agent; inspect its tool activity or select **Stop** to cancel further work.
 4. Open **Overview** or **Capabilities**, or collapse the browser, without losing the live session.
 
-Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys.
+Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys. Use **Cmd+B** for the left sidebar and **Cmd+Option+B** for the browser panel (**Ctrl+B** / **Ctrl+Alt+B** on Windows and Linux). Shortcuts also work while a browser tab has focus.
 
 The browser’s **…** menu includes hard reload, DevTools for the active page, a separate preview window, device viewport controls, appearance, zoom, and per-agent cookie/cache clearing. Closing the separate preview returns the same live tab to the workspace. The expand button at the top fills the app with the browser; Escape restores the split view. Device presets, custom dimensions, and rotation preview responsive layouts without changing the session. Appearance follows System, Light, or Dark across the preview browsers; the workspace remains dark.
 

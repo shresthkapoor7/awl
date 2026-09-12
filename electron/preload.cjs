@@ -35,3 +35,11 @@ contextBridge.exposeInMainWorld("awlBrowser", {
     return () => ipcRenderer.removeListener("browser:state", handle);
   },
 });
+
+contextBridge.exposeInMainWorld("awlWorkspace", {
+  onTogglePanel: (listener) => {
+    const handle = (_event, side) => listener(side);
+    ipcRenderer.on("workspace:toggle-panel", handle);
+    return () => ipcRenderer.removeListener("workspace:toggle-panel", handle);
+  },
+});

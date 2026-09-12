@@ -130,6 +130,40 @@ try {
   await guest
     .getByRole("textbox", { name: "Notes" })
     .fill("Keep this form alive");
+  // Workspace shortcuts still reach the shell while native web content has focus.
+  const guestShortcut = async (alt = false) =>
+    app.evaluate(
+      ({ webContents }, { id, alt }) => {
+        const wc = webContents.fromId(id);
+        wc.focus();
+        const modifiers = [
+          process.platform === "darwin" ? "meta" : "control",
+          ...(alt ? ["alt"] : []),
+        ];
+        wc.sendInputEvent({ type: "keyDown", keyCode: "B", modifiers });
+        wc.sendInputEvent({ type: "keyUp", keyCode: "B", modifiers });
+      },
+      { id: originalId, alt },
+    );
+  await guestShortcut();
+  await page
+    .getByRole("button", { name: "Show sidebar", exact: true })
+    .waitFor();
+  await guestShortcut();
+  await page
+    .getByRole("button", { name: "Hide sidebar", exact: true })
+    .waitFor();
+  await guestShortcut(true);
+  await page
+    .getByRole("button", { name: "Show browser", exact: true })
+    .waitFor();
+  await waitAttached(0);
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
+  await waitAttached(1);
+  assert.equal(
+    await guest.getByRole("textbox", { name: "Notes" }).inputValue(),
+    "Keep this form alive",
+  );
   await guest.getByRole("button", { name: "Save locally" }).click();
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await waitAttached(0);
@@ -319,6 +353,12 @@ try {
     .getByRole("combobox", { name: "Device preset" })
     .selectOption("Tablet");
   await guest.waitForFunction(() => innerWidth === 768);
+  // Native emulation updates before the shell receives and renders its snapshot.
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[aria-label="Viewport width"]').value === "768" &&
+      document.querySelector('[aria-label="Viewport height"]').value === "1024",
+  );
   await page.getByRole("spinbutton", { name: "Viewport width" }).fill("600");
   await page.getByRole("spinbutton", { name: "Viewport height" }).fill("900");
   await page.getByRole("button", { name: "Apply viewport size" }).click();

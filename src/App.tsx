@@ -33,6 +33,7 @@ const Overview = lazy(() => import("./components/overview/Overview"));
 const workspaceViews = ["chat", "overview", "capabilities"] as const;
 
 export function App() {
+  const isMac = /Mac/.test(navigator.platform);
   const [view, setView] = useState<(typeof workspaceViews)[number]>("chat");
   const [ready, setReady] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
@@ -163,7 +164,22 @@ export function App() {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
   useEffect(() => {
+    function togglePanel(side: "left" | "right") {
+      if (side === "left") setSidebarOpen((open) => !open);
+      else setBrowserOpen((open) => !open);
+    }
+    const unsubscribe = window.awlWorkspace?.onTogglePanel(togglePanel);
     function shortcut(event: KeyboardEvent) {
+      if (
+        !window.awlWorkspace &&
+        (isMac ? event.metaKey : event.ctrlKey) &&
+        !event.shiftKey &&
+        (event.code === "KeyB" || event.key.toLowerCase() === "b")
+      ) {
+        event.preventDefault();
+        if (!event.repeat) togglePanel(event.altKey ? "right" : "left");
+        return;
+      }
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setSidebarOpen(true);
@@ -176,8 +192,11 @@ export function App() {
       }
     }
     window.addEventListener("keydown", shortcut);
-    return () => window.removeEventListener("keydown", shortcut);
-  }, []);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+      unsubscribe?.();
+    };
+  }, [isMac]);
 
   return (
     <div
@@ -194,6 +213,8 @@ export function App() {
           <span className="window-clearance" />
           <IconButton
             label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            title={`${sidebarOpen ? "Hide sidebar" : "Show sidebar"} (${isMac ? "⌘B" : "Ctrl+B"})`}
+            aria-keyshortcuts={isMac ? "Meta+B" : "Control+B"}
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
             {sidebarOpen ? (
@@ -275,6 +296,8 @@ export function App() {
         <IconButton
           style={{ visibility: view !== "chat" ? "hidden" : "visible" }}
           label={browserOpen ? "Hide browser" : "Show browser"}
+          title={`${browserOpen ? "Hide browser" : "Show browser"} (${isMac ? "⌘⌥B" : "Ctrl+Alt+B"})`}
+          aria-keyshortcuts={isMac ? "Meta+Alt+B" : "Control+Alt+B"}
           onClick={() => {
             setBrowserOpen(!browserOpen);
             setMobileView(browserOpen ? "chat" : "browser");

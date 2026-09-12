@@ -67,6 +67,34 @@ try {
   await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
   await page.getByRole("button", { name: "Show browser", exact: true }).click();
   assert.equal(await draft.inputValue(), "Keep my draft");
+  const shortcut = async (alt = false) =>
+    app.evaluate(({ BrowserWindow }, alt) => {
+      const wc = BrowserWindow.getAllWindows()[0].webContents;
+      const modifiers = [
+        process.platform === "darwin" ? "meta" : "control",
+        ...(alt ? ["alt"] : []),
+      ];
+      wc.sendInputEvent({ type: "keyDown", keyCode: "B", modifiers });
+      wc.sendInputEvent({ type: "keyUp", keyCode: "B", modifiers });
+    }, alt);
+  await draft.focus();
+  await shortcut();
+  await page
+    .getByRole("button", { name: "Show sidebar", exact: true })
+    .waitFor();
+  await shortcut(true);
+  await page
+    .getByRole("button", { name: "Show browser", exact: true })
+    .waitFor();
+  await shortcut();
+  await page
+    .getByRole("button", { name: "Hide sidebar", exact: true })
+    .waitFor();
+  await shortcut(true);
+  await page
+    .getByRole("button", { name: "Hide browser", exact: true })
+    .waitFor();
+  assert.equal(await draft.inputValue(), "Keep my draft");
   await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
   await page
     .getByRole("heading", { name: "Capabilities", exact: true })

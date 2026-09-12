@@ -3,6 +3,10 @@ const path = require("node:path");
 const { installBrowser } = require("../dist-electron/electron/browser.cjs");
 const { installAgent } = require("../dist-electron/electron/agent-ipc.cjs");
 
+const {
+  installWorkspaceShortcuts,
+} = require("../dist-electron/electron/workspace-shortcuts.cjs");
+
 app.setName("awl");
 const iconPath = path.join(__dirname, "assets", "awl.png");
 
@@ -25,6 +29,7 @@ function createWindow() {
       sandbox: true,
     },
   });
+  installWorkspaceShortcuts(window, window.webContents);
   const browser = installBrowser(window);
   installAgent(window, browser);
   const developmentUrl = process.env.AWL_DEV_URL;

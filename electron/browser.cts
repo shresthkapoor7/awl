@@ -11,6 +11,7 @@ import {
   type WebContents,
   type WebPreferences,
 } from "electron";
+import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { randomUUID } from "node:crypto";
 import { ToolError, type BrowserAccess } from "./tools/core.cjs";
 import type {
@@ -482,6 +483,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
+    installWorkspaceShortcuts(window, wc);
     wc.on("dom-ready", () => {
       tab.ready = true;
       tab.viewportKey = "";
