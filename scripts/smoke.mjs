@@ -182,6 +182,24 @@ try {
     0,
   );
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
+  // Activity stays in the centered message column as the available width changes.
+  const alignedActivity = async () => {
+    const messageBox = await page.locator(".assistant-message").boundingBox();
+    const activityBox = await page.locator(".live-tool-activity").boundingBox();
+    assert.ok(Math.abs(messageBox.x - activityBox.x) < 1);
+    assert.ok(Math.abs(messageBox.width - activityBox.width) < 1);
+  };
+  await alignedActivity();
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  await alignedActivity();
+  await page.getByRole("button", { name: "Hide browser", exact: true }).click();
+  await alignedActivity();
+  await page.locator(".live-tool-activity summary").click();
+  await alignedActivity();
+  await mkdir("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/awl-chat-controls.png" });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
   // Check both stop affordances, IPC targeting, failure retry, and acknowledgement.
   await app.evaluate(({ ipcMain }) => {
     globalThis.stopRequests = [];
