@@ -153,11 +153,6 @@ try {
     .getByRole("button", { name: "Take control", exact: true })
     .first()
     .click();
-  const confirmation = page.getByRole("checkbox", {
-    name: "I have reviewed the member’s details",
-  });
-  await confirmation.check();
-  await page.getByRole("button", { name: "Continue to review" }).click();
   await overview.click();
   await officeReady();
   await expectStatus("Member onboarding", "You’re in control");
@@ -165,9 +160,11 @@ try {
     .getByRole("navigation", { name: "Office agents" })
     .getByRole("button", { name: /Member onboarding You’re in control/ })
     .click();
-  assert.equal(await confirmation.isChecked(), true);
-  assert.equal(await confirmation.isEnabled(), true);
-  await page.getByRole("button", { name: "Review prepared" }).waitFor();
+  await page
+    .getByText(
+      "The browser stays yours. Resume to preview the next demo state.",
+    )
+    .waitFor();
   await page.getByRole("button", { name: "Resume with awl" }).click();
   await overview.click();
   await officeReady();
@@ -246,7 +243,18 @@ try {
     BrowserWindow.getAllWindows()[0].setSize(1000, 700),
   );
   await page.waitForFunction(() => window.innerWidth <= 1000);
-  await page.screenshot({ path: "test-results/awl-office-compact.png" });
+  // A resized hidden native window may not produce a compositor frame for a
+  // screenshot. Briefly show it without taking focus, then hide it again.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].showInactive(),
+  );
+  try {
+    await page.screenshot({ path: "test-results/awl-office-compact.png" });
+  } finally {
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].hide(),
+    );
+  }
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -298,6 +306,9 @@ try {
   console.log(
     "Passed: 3D rendering, camera controls, mesh/label selection, draft and handoff preservation, live state, new agents, reduced motion, compact layout, WebGL fallback, local assets.",
   );
+} catch (error) {
+  console.error(error);
+  throw error;
 } finally {
   await app.close();
 }

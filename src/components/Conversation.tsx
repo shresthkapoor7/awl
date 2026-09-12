@@ -72,7 +72,49 @@ export function Conversation({
         </span>
       </header>
       <div className="conversation-scroll" ref={scroll}>
-        {empty ? (
+        {agent.capabilityRun ? (
+          <>
+            <div className="date-divider">
+              <span>Today</span>
+            </div>
+            <article className="user-message">
+              <div className="message-person">
+                <span>You</span>
+                <span>Just now</span>
+              </div>
+              <p>Run {agent.capabilityRun.capability.name}.</p>
+              <p className="capability-run-input">
+                Member ID: {agent.capabilityRun.inputs.member_id}
+              </p>
+            </article>
+            <article className="assistant-message">
+              <div className="assistant-heading">
+                <span className="assistant-avatar">
+                  <Mark />
+                </span>
+                <strong>awl</strong>
+                <span>
+                  Demo · capability run · v
+                  {agent.capabilityRun.capability.version}
+                </span>
+              </div>
+              <div role="status" aria-live="polite">
+                <p>
+                  {agent.phase === "replaying"
+                    ? "Running demo…"
+                    : "Demo run complete."}
+                </p>
+              </div>
+              <p>
+                This previews the saved workflow. No browser actions or model
+                calls are made.
+              </p>
+              <button className="text-button" onClick={onCapability}>
+                View capability <ArrowRight size={14} />
+              </button>
+            </article>
+          </>
+        ) : empty ? (
           <div className="welcome">
             <div className="welcome-mark">
               <Mark />
@@ -119,7 +161,7 @@ export function Conversation({
                   <Mark />
                 </span>
                 <strong>awl</strong>
-                <span>Discovery</span>
+                <span>Demo · discovery</span>
               </div>
               <p>
                 {statement
@@ -195,13 +237,12 @@ export function Conversation({
                 </div>
                 <p>
                   {agent.phase === "human"
-                    ? "Confirm the member’s details, then resume."
-                    : "Review the member’s details in the browser to continue."}
+                    ? "The browser stays yours. Resume to preview the next demo state."
+                    : "Try the handoff. This demo does not operate on the live website."}
                 </p>
                 <button
                   className="primary-button"
                   onClick={agent.phase === "human" ? onResume : onTakeControl}
-                  disabled={agent.phase === "human" && !agent.verified}
                 >
                   {agent.phase === "human" ? "Resume with awl" : "Take control"}
                   <ArrowRight size={15} />

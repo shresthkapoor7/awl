@@ -134,9 +134,14 @@ strong {
   align-items: center;
   color: var(--muted);
   margin-right: auto;
+  min-width: 0;
+  overflow: hidden;
 }
 .titlebar-center > span:last-child {
   color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .icon-button {
   display: inline-flex;
@@ -1409,6 +1414,7 @@ strong {
   gap: 4px;
   margin: 0 16px;
   -webkit-app-region: no-drag;
+  flex-shrink: 0;
 }
 .workspace-tabs button {
   display: flex;
