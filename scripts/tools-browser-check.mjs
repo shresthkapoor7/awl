@@ -86,6 +86,27 @@ try {
   assert.equal(capture.ok, true, JSON.stringify(capture));
   assert.ok(capture.image.startsWith("data:image/png;base64,iVBOR"));
   assert.ok(capture.data.image.width <= 1280);
+  const dom = await call("browser-dom", "browserDom", {
+    tab_id: tabId,
+    frame_id: null,
+    offset: 0,
+    limit: 100,
+  });
+  assert.equal(dom.ok, true, JSON.stringify(dom));
+  assert.ok(dom.data.text.includes("Workbench"));
+  assert.ok(
+    dom.data.elements.some(
+      (el) => el.name === "Name" && el.selector === "#name",
+    ),
+  );
+  const page2 = await call("browser-dom", "browserDom", {
+    tab_id: tabId,
+    frame_id: null,
+    offset: 0,
+    limit: 1,
+  });
+  assert.equal(page2.data.elements.length, 1);
+  assert.equal(page2.data.next_offset, 1);
   console.log(
     "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
   );
