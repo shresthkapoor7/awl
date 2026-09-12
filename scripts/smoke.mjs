@@ -167,6 +167,18 @@ try {
   await markdown.getByRole("heading", { name: "Findings" }).waitFor();
   assert.equal(await markdown.locator("strong").textContent(), "Important");
   assert.equal(await markdown.locator("em").textContent(), "useful");
+  assert.equal(
+    await markdown
+      .locator("strong")
+      .evaluate((element) => getComputedStyle(element).fontWeight),
+    "600",
+  );
+  assert.equal(
+    await markdown
+      .locator("em")
+      .evaluate((element) => getComputedStyle(element).fontSynthesisStyle),
+    "auto",
+  );
   assert.equal(await markdown.locator("table tbody tr").count(), 1);
   assert.equal(await markdown.locator("ol > li").count(), 2);
   assert.equal(

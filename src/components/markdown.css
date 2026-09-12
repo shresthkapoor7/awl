@@ -96,3 +96,10 @@
   margin-right: 8px;
   accent-color: #aaa;
 }
+.markdown-message strong {
+  font-weight: 600;
+}
+.markdown-message em {
+  font-style: italic;
+  font-synthesis: style;
+}
