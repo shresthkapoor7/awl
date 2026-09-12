@@ -9,7 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "start": "npm run build && electron .",
+    "start": "npm run build && node scripts/start.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src electron scripts index.html vite.config.ts tsconfig.json package.json",
     "test:ui": "npm run build && node scripts/smoke.mjs"
