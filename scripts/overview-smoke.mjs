@@ -14,7 +14,8 @@ try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);
   // Keep test input separate from someone typing into the live desktop preview.
-  await app.evaluate(({ BrowserWindow }) => {
+  await app.evaluate(({ app, BrowserWindow }) => {
+    if (process.platform === "darwin") app.setActivationPolicy("accessory");
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
     window.hide();
@@ -36,6 +37,40 @@ try {
   assert.equal(await page.locator(".office-canvas canvas").count(), 1);
   assert.equal(await page.locator(".station-label").count(), 2);
   await page.getByText("2 agents").waitFor();
+  // Drive visibility explicitly while the test window stays out of the user's way.
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const movingLabel = page.getByRole("button", {
+    name: "Open Member onboarding chat",
+    exact: true,
+  });
+  const beforeWalking = await movingLabel.boundingBox();
+  await page.waitForFunction(({ x, y }) => {
+    const label = document
+      .querySelector('[aria-label="Open Member onboarding chat"]')
+      .getBoundingClientRect();
+    return Math.hypot(label.x - x, label.y - y) > 24;
+  }, beforeWalking);
+  await page.screenshot({ path: "test-results/awl-office-walking.png" });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const paused = await movingLabel.boundingBox();
+  await page.waitForTimeout(150);
+  assert.deepEqual(
+    await movingLabel.boundingBox(),
+    paused,
+    "Walking must pause when the window is hidden",
+  );
   await page.screenshot({ path: "test-results/awl-office.png" });
 
   const station = page.getByRole("button", {
@@ -146,6 +181,23 @@ try {
   assert.equal(
     await page.locator(".office-canvas").getAttribute("data-motion"),
     "reduced",
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const stillLabel = await page
+    .getByRole("button", { name: "Open Statement lookup chat", exact: true })
+    .boundingBox();
+  await page.waitForTimeout(150);
+  assert.deepEqual(
+    await page
+      .getByRole("button", { name: "Open Statement lookup chat", exact: true })
+      .boundingBox(),
+    stillLabel,
   );
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setSize(1000, 700),

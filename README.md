@@ -28,7 +28,7 @@ An optional 3D office overview will show agents' activity and highlight where at
 
 Interactive Electron UI prototype. The workspace includes an agent sidebar, chat, a simulated browser, a human handoff, and a capability preview. All agent responses and browser content are sample data; no websites are visited, no AI calls are made, and no automation code is generated. Session changes stay in memory and reset on reload.
 
-The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Poses reflect the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
+The **Overview** tab shows the same demo agents in a 3D office. Select a workstation, its label, or an agent in the list to open the existing chat. Agents sit with articulated legs, type during replay, pace when waiting, and stroll or take a coffee break after completion. The room has warm wood, daylight, and leafy plants. Motion reflects the agent’s current state; the overview does not start extra work. The execution backend is not implemented yet.
 
 ## Run locally
 

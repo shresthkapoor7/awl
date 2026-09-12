@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import type { Agent, Phase } from "../../demo";
+import {
+  officePose,
+  SEAT,
+  SEATED_HEIGHT,
+  STANDING_HEIGHT,
+  type OfficePose,
+} from "./office-motion";
 
 export type StationLabel = {
   id: string;
@@ -19,7 +26,16 @@ type Station = {
   phase: Phase;
   group: THREE.Group;
   head: THREE.Group;
-  arm: THREE.Group;
+  person: THREE.Group;
+  arms: THREE.Group[];
+  elbows: THREE.Group[];
+  legs: THREE.Group[];
+  knees: THREE.Group[];
+  mug: THREE.Group;
+  elapsed: number;
+  index: number;
+  pose: OfficePose;
+  seated: number;
   screen: THREE.MeshStandardMaterial;
   signal: THREE.Mesh;
   anchor: THREE.Vector3;
@@ -36,7 +52,7 @@ export function createOffice(
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.05;
   const canvas = renderer.domElement;
   canvas.setAttribute(
     "aria-label",
@@ -64,8 +80,8 @@ export function createOffice(
         color,
         new THREE.MeshStandardMaterial({
           color,
-          roughness: 0.75,
-          metalness: 0.12,
+          roughness: 0.82,
+          metalness: 0.02,
         }),
       );
     return materials.get(color)!;
@@ -121,9 +137,59 @@ export function createOffice(
     parent.add(mesh);
     return mesh;
   }
-  scene.add(new THREE.HemisphereLight("#ffffff", "#303030", 2.1));
-  const light = new THREE.DirectionalLight("#ffffff", 3.8);
-  light.position.set(1, 10, 6);
+  function plant(
+    parent: THREE.Object3D,
+    x: number,
+    z: number,
+    scale: number,
+    potColor: string,
+    y = 0,
+  ) {
+    const plant = new THREE.Group();
+    plant.position.set(x, y, z);
+    plant.scale.setScalar(scale);
+    parent.add(plant);
+    const pot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.31, 0.23, 0.46, 24),
+      material(potColor),
+    );
+    pot.position.y = 0.23;
+    pot.castShadow = true;
+    pot.receiveShadow = true;
+    plant.add(pot);
+    cylinder(plant, 0.28, 0.018, [0, 0.46, 0], "#604932");
+    cylinder(plant, 0.025, 1.08, [0, 0.98, 0], "#5c7542");
+    for (let leaf = 0; leaf < 11; leaf++) {
+      const angle = leaf * 2.4;
+      const height = 0.66 + leaf * 0.085;
+      const reach = 0.32 - leaf * 0.011;
+      const foliage = sphere(
+        plant,
+        1,
+        [Math.sin(angle) * reach, height, Math.cos(angle) * reach],
+        ["#477d47", "#649852", "#83ad62"][leaf % 3],
+      );
+      foliage.scale.set(0.16, 0.05, 0.36 - leaf * 0.012);
+      foliage.rotation.set(-0.2 - leaf * 0.025, angle, 0.15);
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, reach, 6),
+        material("#5c7542"),
+      );
+      stem.position.set(
+        (Math.sin(angle) * reach) / 2,
+        height,
+        (Math.cos(angle) * reach) / 2,
+      );
+      stem.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)),
+      );
+      plant.add(stem);
+    }
+  }
+  scene.add(new THREE.HemisphereLight("#e5f1ff", "#c2ad87", 2.5));
+  const light = new THREE.DirectionalLight("#fff0d4", 2.6);
+  light.position.set(-3, 11, 7);
   light.castShadow = true;
   light.shadow.mapSize.set(2048, 2048);
   Object.assign(light.shadow.camera, {
@@ -135,7 +201,7 @@ export function createOffice(
   });
   light.shadow.normalBias = 0.03;
   scene.add(light);
-  const rim = new THREE.DirectionalLight("#ffffff", 1.8);
+  const rim = new THREE.DirectionalLight("#d4eaff", 1.7);
   rim.position.set(-8, 6, -5);
   scene.add(rim);
   const room = new THREE.Group();
@@ -144,6 +210,8 @@ export function createOffice(
   let roomDepth = 9;
   let disposed = false;
   let frame = 0;
+  let lastTime = 0;
+  let lastRender = 0;
   let pointerDown: { x: number; y: number } | null = null;
   const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const pointer = new THREE.Vector2();
@@ -161,78 +229,127 @@ export function createOffice(
     stations = [];
     const rows = Math.max(1, Math.ceil(agents.length / 2));
     roomDepth = Math.max(9, rows * 3.8 + 4);
-    box(room, [12, 0.25, roomDepth], [0, -0.22, 0], "#242424", 0.06);
-    box(room, [12, 0.08, roomDepth], [0, -0.04, 0], "#393939");
-    // A cutaway studio: two walls, low storage, and a backlit wall panel.
-    box(room, [12, 2.5, 0.16], [0, 1.2, -roomDepth / 2], "#282828");
-    box(room, [0.16, 2.5, roomDepth], [-6, 1.2, 0], "#222222");
-    for (let i = -5; i <= 5; i++)
-      box(room, [0.012, 0.008, roomDepth], [i, 0.006, 0], "#484848");
-    for (let z = -roomDepth / 2 + 1; z < roomDepth / 2; z++)
-      box(room, [12, 0.008, 0.012], [0, 0.006, z], "#484848");
+    box(room, [12, 0.25, roomDepth], [0, -0.22, 0], "#a38164", 0.06);
+    box(room, [12, 0.08, roomDepth], [0, -0.04, 0], "#d8c5a8");
+    box(room, [12, 2.5, 0.16], [0, 1.2, -roomDepth / 2], "#d5e0d0");
+    box(room, [0.16, 2.5, roomDepth], [-6, 1.2, 0], "#eee7d9");
+    for (let i = -5.25; i < 6; i += 0.75)
+      box(room, [0.012, 0.006, roomDepth], [i, 0.004, 0], "#b8a385");
+    for (let z = -roomDepth / 2 + 1.6; z < roomDepth / 2; z += 1.8)
+      for (let i = -6; i < 6; i += 0.75)
+        box(
+          room,
+          [0.75, 0.006, 0.01],
+          [i + 0.375, 0.004, z + (Math.round(i * 4) % 3) * 0.25],
+          "#b8a385",
+        );
+    // Daylight windows and a planted shelf give the cutaway room some life.
+    for (const z of [-2.8, -0.3, 2.2]) {
+      if (z > roomDepth / 2 - 0.7) continue;
+      box(room, [0.08, 1.35, 1.85], [-5.87, 1.48, z], "#faf4e8", 0.03);
+      box(room, [0.02, 1.15, 1.65], [-5.815, 1.48, z], "#a6d3df");
+      box(room, [0.03, 1.15, 0.045], [-5.79, 1.48, z], "#fff8ed");
+      box(room, [0.03, 0.045, 1.65], [-5.79, 1.48, z], "#fff8ed");
+      box(room, [0.35, 0.07, 2], [-5.75, 0.8, z], "#faf4e8", 0.02);
+    }
     box(
       room,
-      [4.5, 0.95, 0.07],
-      [-1.3, 1.6, -roomDepth / 2 + 0.13],
-      "#101010",
-      0.03,
+      [3.5, 1.03, 0.07],
+      [-0.9, 1.55, -roomDepth / 2 + 0.13],
+      "#b68a5d",
+      0.035,
     );
-    for (let i = 0; i < 7; i++)
+    box(
+      room,
+      [3.3, 0.86, 0.03],
+      [-0.9, 1.55, -roomDepth / 2 + 0.18],
+      "#f4f1df",
+    );
+    for (let i = 0; i < 3; i++) {
       box(
         room,
-        [0.03, 0.52, 0.03],
-        [-3.15 + i * 0.15, 1.6, -roomDepth / 2 + 0.18],
-        "#b1b1b1",
+        [0.55, 0.32, 0.012],
+        [-1.94 + i * 0.84, 1.61, -roomDepth / 2 + 0.205],
+        ["#e8bd78", "#99bfae", "#b8c8db"][i],
       );
+      box(
+        room,
+        [0.35, 0.018, 0.015],
+        [-1.94 + i * 0.84, 1.65, -roomDepth / 2 + 0.22],
+        "#697e72",
+      );
+      box(
+        room,
+        [0.25, 0.018, 0.015],
+        [-1.99 + i * 0.84, 1.54, -roomDepth / 2 + 0.22],
+        "#697e72",
+      );
+    }
     box(
       room,
-      [1.7, 0.045, 0.03],
-      [-0.5, 1.68, -roomDepth / 2 + 0.18],
-      "#8a8a8a",
-    );
-    box(
-      room,
-      [1.1, 0.035, 0.03],
-      [-0.8, 1.48, -roomDepth / 2 + 0.18],
-      "#555555",
-    );
-    box(
-      room,
-      [2, 0.85, 0.75],
+      [2.1, 0.85, 0.75],
       [3.65, 0.43, -roomDepth / 2 + 0.65],
-      "#333333",
+      "#6a8c7b",
       0.04,
+    );
+    box(
+      room,
+      [2.2, 0.08, 0.86],
+      [3.65, 0.88, -roomDepth / 2 + 0.65],
+      "#d2aa7b",
+      0.025,
     );
     for (const x of [3.2, 4.1])
       box(
         room,
-        [0.6, 0.025, 0.04],
-        [x, 0.61, -roomDepth / 2 + 1.05],
-        "#777777",
+        [0.36, 0.035, 0.05],
+        [x, 0.6, -roomDepth / 2 + 1.04],
+        "#d4be8c",
       );
-    for (const x of [-4.7, 4.9]) {
-      cylinder(room, 0.28, 0.42, [x, 0.22, -roomDepth / 2 + 0.85], "#515151");
-      for (let leaf = 0; leaf < 5; leaf++) {
-        const stem = box(
-          room,
-          [0.06, 0.85, 0.06],
-          [x + Math.sin(leaf * 2) * 0.15, 0.83, -roomDepth / 2 + 0.85],
-          "#808080",
-          0.02,
-        );
-        stem.rotation.z = Math.sin(leaf * 2) * 0.35;
-      }
-    }
-    // Low bench along the open front edge; the center stays clear.
+    // Coffee corner, with an actual leafy plant rather than gray spikes.
     box(
       room,
-      [2.5, 0.2, 0.65],
-      [-3.6, 0.45, roomDepth / 2 - 0.65],
-      "#333333",
-      0.06,
+      [0.44, 0.56, 0.4],
+      [3.95, 1.19, -roomDepth / 2 + 0.57],
+      "#363d3e",
+      0.045,
     );
-    for (const x of [-4.5, -2.7])
-      box(room, [0.12, 0.4, 0.4], [x, 0.2, roomDepth / 2 - 0.65], "#181818");
+    box(
+      room,
+      [0.29, 0.2, 0.025],
+      [3.95, 1.21, -roomDepth / 2 + 0.78],
+      "#91b8ad",
+      0.02,
+    );
+    cylinder(room, 0.085, 0.14, [3.95, 1.01, -roomDepth / 2 + 0.83], "#f3e8d8");
+    plant(room, -4.7, -roomDepth / 2 + 0.85, 1.2, "#bd7957");
+    plant(room, 5, -roomDepth / 2 + 0.9, 1.3, "#e6d7bd");
+    plant(room, -5.0, roomDepth / 2 - 0.7, 0.9, "#718e80");
+    plant(room, 4.95, roomDepth / 2 - 0.7, 0.95, "#bd7957");
+    // A small lounge at the front, outside workstation walking routes.
+    box(
+      room,
+      [2.6, 0.025, 1.25],
+      [-3.15, 0.018, roomDepth / 2 - 0.8],
+      "#91ada0",
+      0.1,
+    );
+    box(
+      room,
+      [2.3, 0.25, 0.68],
+      [-3.15, 0.43, roomDepth / 2 - 0.8],
+      "#c98763",
+      0.11,
+    );
+    box(
+      room,
+      [2.3, 0.5, 0.17],
+      [-3.15, 0.78, roomDepth / 2 - 0.53],
+      "#c98763",
+      0.075,
+    );
+    for (const x of [-4.1, -2.2])
+      box(room, [0.1, 0.35, 0.42], [x, 0.18, roomDepth / 2 - 0.8], "#765f4b");
     agents.forEach((agent, index) => {
       const x = index % 2 === 0 ? -2.45 : 2.1;
       const z = (Math.floor(index / 2) - (rows - 1) / 2) * 3.8;
@@ -240,17 +357,25 @@ export function createOffice(
       group.position.set(x, 0, z);
       group.userData.agentId = agent.id;
       room.add(group);
-      box(group, [3, 0.13, 1.4], [0, 0.95, 0], "#777777", 0.05);
+      box(group, [3, 0.13, 1.4], [0, 0.95, 0], "#cfa472", 0.05);
+      box(
+        group,
+        [3.25, 0.02, 2.35],
+        [0.1, 0.018, 0.25],
+        index % 2 ? "#a8b8c1" : "#a7bba1",
+        0.09,
+      );
+      plant(group, -1.15, -0.2, 0.3, "#f0dfc2", 1.02);
       for (const legX of [-1.3, 1.3])
         for (const legZ of [-0.5, 0.5])
-          box(group, [0.09, 0.9, 0.09], [legX, 0.45, legZ], "#242424");
-      box(group, [1.5, 0.018, 0.65], [-0.1, 1.025, 0.2], "#242424", 0.02);
+          box(group, [0.09, 0.9, 0.09], [legX, 0.45, legZ], "#58645f");
+      box(group, [1.5, 0.018, 0.65], [-0.1, 1.025, 0.2], "#506b64", 0.02);
       box(group, [0.5, 0.04, 0.35], [0, 1.05, -0.28], "#272727", 0.02);
       box(group, [0.07, 0.28, 0.08], [0, 1.2, -0.3], "#333333");
       box(group, [1.3, 0.8, 0.1], [0, 1.65, -0.28], "#171717", 0.04);
       const screen = new THREE.MeshStandardMaterial({
-        color: "#646464",
-        emissive: "#ffffff",
+        color: "#446b70",
+        emissive: "#a7e0df",
         emissiveIntensity: 0.2,
         roughness: 0.65,
       });
@@ -265,7 +390,7 @@ export function createOffice(
           group,
           [0.38 + (line % 2) * 0.25, 0.025, 0.008],
           [-0.12, 1.85 - line * 0.12, -0.211],
-          "#c4c4c4",
+          "#bfe3d4",
         );
       box(group, [0.85, 0.04, 0.28], [-0.1, 1.06, 0.4], "#4a4a4a", 0.02);
       for (let row = 0; row < 3; row++)
@@ -277,45 +402,73 @@ export function createOffice(
             "#939393",
             0.003,
           );
-      cylinder(group, 0.1, 0.18, [-1.1, 1.12, 0.28], "#aaaaaa");
-      box(group, [0.4, 0.07, 0.5], [1.05, 1.03, -0.25], "#4a4a4a", 0.02);
-      const person = new THREE.Group();
-      person.position.set(0.72, 0, 1.17);
-      group.add(person);
-      cylinder(person, 0.36, 0.08, [0, 0.1, 0], "#242424");
-      cylinder(person, 0.055, 0.55, [0, 0.39, 0], "#777777");
-      box(person, [0.62, 0.15, 0.6], [0, 0.72, 0], "#252525", 0.06);
-      box(person, [0.62, 0.65, 0.14], [0, 1.03, -0.28], "#333333", 0.06);
-      for (const side of [-1, 1]) {
-        box(
-          person,
-          [0.2, 0.44, 0.23],
-          [side * 0.17, 0.51, -0.17],
-          "#747474",
-          0.05,
-        );
-        box(
-          person,
-          [0.22, 0.14, 0.38],
-          [side * 0.17, 0.3, -0.27],
-          "#252525",
-          0.04,
-        );
+      cylinder(group, 0.1, 0.18, [-1.1, 1.12, 0.28], "#f4e7ce");
+      box(group, [0.4, 0.07, 0.5], [1.05, 1.03, -0.25], "#c1775c", 0.02);
+      // Furniture and the articulated character have separate transforms.
+      const chair = new THREE.Group();
+      chair.position.set(SEAT[0], 0, SEAT[1]);
+      chair.rotation.y = Math.PI;
+      group.add(chair);
+      cylinder(chair, 0.055, 0.43, [0, 0.27, 0], "#626b67");
+      for (let spoke = 0; spoke < 5; spoke++) {
+        const base = new THREE.Group();
+        base.rotation.y = (spoke * Math.PI * 2) / 5;
+        chair.add(base);
+        box(base, [0.065, 0.065, 0.4], [0, 0.09, 0.17], "#3b4843", 0.025);
+        sphere(base, 0.065, [0, 0.065, 0.36], "#29332f");
       }
-      box(person, [0.55, 0.53, 0.37], [0, 1.04, 0], "#a2a2a2", 0.1);
+      box(chair, [0.7, 0.16, 0.56], [0, 0.5, -0.08], "#46685e", 0.07);
+      box(chair, [0.69, 0.64, 0.12], [0, 0.91, -0.39], "#52796b", 0.06);
+      box(chair, [0.08, 0.48, 0.07], [0, 0.59, -0.38], "#3b4843");
+      const person = new THREE.Group();
+      group.add(person);
+      const shell = index % 2 ? "#d6e5e7" : "#f1ddbc";
+      const trim = index % 2 ? "#7297a6" : "#c29359";
+      box(person, [0.47, 0.16, 0.32], [0, 0, 0], trim, 0.06);
+      box(person, [0.55, 0.5, 0.36], [0, 0.34, 0], shell, 0.1);
+      box(person, [0.17, 0.045, 0.012], [0, 0.39, 0.19], trim, 0.01);
       const head = new THREE.Group();
-      head.position.set(0, 1.57, 0);
+      head.position.set(0, 0.82, 0);
       person.add(head);
-      box(head, [0.56, 0.46, 0.47], [0, 0, 0], "#c2c2c2", 0.1);
-      box(head, [0.42, 0.2, 0.025], [0, 0, 0.24], "#1a1a1a", 0.05);
+      box(head, [0.56, 0.46, 0.47], [0, 0, 0], shell, 0.1);
+      box(head, [0.42, 0.2, 0.025], [0, 0, 0.24], "#233835", 0.05);
       for (const eye of [-0.1, 0.1])
-        sphere(head, 0.035, [eye, 0, 0.26], "#dedede");
-      const arm = new THREE.Group();
-      arm.position.set(-0.38, 1.21, 0);
-      person.add(arm);
-      box(arm, [0.16, 0.43, 0.19], [0, -0.18, 0], "#9a9a9a", 0.05);
-      sphere(arm, 0.1, [0, -0.4, 0], "#c2c2c2");
-      box(person, [0.16, 0.4, 0.19], [0.37, 1.03, 0], "#9a9a9a", 0.05);
+        sphere(head, 0.036, [eye, 0, 0.26], "#d5f8eb");
+      const arms: THREE.Group[] = [],
+        elbows: THREE.Group[] = [],
+        legs: THREE.Group[] = [],
+        knees: THREE.Group[] = [];
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Group();
+        arm.position.set(side * 0.37, 0.53, 0);
+        person.add(arm);
+        arms.push(arm);
+        sphere(arm, 0.085, [0, 0, 0], trim);
+        box(arm, [0.15, 0.25, 0.18], [0, -0.14, 0], shell, 0.045);
+        const elbow = new THREE.Group();
+        elbow.position.y = -0.28;
+        arm.add(elbow);
+        elbows.push(elbow);
+        box(elbow, [0.14, 0.2, 0.17], [0, -0.09, 0], shell, 0.04);
+        sphere(elbow, 0.09, [0, -0.22, 0], trim);
+        const leg = new THREE.Group();
+        leg.position.x = side * 0.155;
+        person.add(leg);
+        legs.push(leg);
+        box(leg, [0.2, 0.3, 0.21], [0, -0.16, 0], trim, 0.055);
+        const knee = new THREE.Group();
+        knee.position.y = -0.32;
+        leg.add(knee);
+        knees.push(knee);
+        sphere(knee, 0.085, [0, 0, 0], "#67776e");
+        box(knee, [0.18, 0.43, 0.2], [0, -0.27, 0], shell, 0.05);
+        box(knee, [0.24, 0.18, 0.34], [0, -0.57, 0.07], "#354b43", 0.045);
+      }
+      const mug = new THREE.Group();
+      elbows[1].add(mug);
+      mug.position.set(0, -0.21, 0.1);
+      cylinder(mug, 0.09, 0.16, [0, 0, 0], "#cb865d");
+      cylinder(mug, 0.07, 0.008, [0, 0.084, 0], "#513b2b");
       const signal = box(
         group,
         [0.08, 0.08, 0.08],
@@ -328,10 +481,19 @@ export function createOffice(
         phase: agent.phase,
         group,
         head,
-        arm,
+        person,
+        arms,
+        elbows,
+        legs,
+        knees,
+        mug,
+        elapsed: 0,
+        index,
+        pose: officePose(agent.phase, 0, index),
+        seated: officePose(agent.phase, 0, index).seated,
         screen,
         signal,
-        anchor: new THREE.Vector3(x + 0.72, 2.75, z + 1.17),
+        anchor: new THREE.Vector3(x + SEAT[0], 2.75, z + SEAT[1]),
       });
     });
     updateAgents(agents);
@@ -347,9 +509,11 @@ export function createOffice(
     }
     for (let i = 0; i < agents.length; i++) {
       const station = stations[i];
+      if (station.phase !== agents[i].phase) station.elapsed = 0;
       station.phase = agents[i].phase;
-      station.arm.rotation.z = station.phase === "waiting" ? -2.25 : -0.1;
-      station.head.rotation.y = station.phase === "replaying" ? Math.PI : -0.25;
+      station.pose = officePose(station.phase, station.elapsed, station.index);
+      station.seated = station.pose.seated;
+      applyPose(station, 0, true);
       station.screen.emissiveIntensity = station.phase === "new" ? 0.02 : 0.2;
       station.signal.visible = ["waiting", "human", "replaying"].includes(
         station.phase,
@@ -394,27 +558,97 @@ export function createOffice(
   function schedule() {
     cancelAnimationFrame(frame);
     frame = 0;
-    if (
-      disposed ||
-      motion.matches ||
-      document.hidden ||
-      !stations.some((s) => ["waiting", "human", "replaying"].includes(s.phase))
-    )
+    if (disposed || motion.matches || document.hidden || !stations.length) {
+      lastTime = 0;
       return;
+    }
     frame = requestAnimationFrame(animate);
   }
-  function animate(time: number) {
-    for (const s of stations) {
-      if (s.phase === "waiting")
-        s.arm.rotation.z = -2.25 + Math.sin(time / 650) * 0.12;
-      if (s.phase === "human")
-        s.head.rotation.y = -0.25 + Math.sin(time / 1300) * 0.15;
-      if (s.phase === "replaying") {
-        s.head.rotation.x = Math.sin(time / 170) * 0.05;
-        s.screen.emissiveIntensity = 0.2 + Math.sin(time / 330) * 0.1;
-      }
+  function applyPose(station: Station, delta: number, immediate = false) {
+    const pose = station.pose;
+    station.seated = immediate
+      ? pose.seated
+      : THREE.MathUtils.damp(station.seated, pose.seated, 12, delta);
+    const sit = station.seated;
+    const gait = pose.walking ? Math.sin(station.elapsed * 8) : 0;
+    station.person.position.set(
+      pose.x,
+      THREE.MathUtils.lerp(STANDING_HEIGHT, SEATED_HEIGHT, sit) +
+        (pose.walking ? Math.abs(gait) * 0.035 : 0),
+      pose.z,
+    );
+    const angle = Math.atan2(
+      Math.sin(pose.heading - station.person.rotation.y),
+      Math.cos(pose.heading - station.person.rotation.y),
+    );
+    station.person.rotation.y += immediate
+      ? angle
+      : angle * Math.min(1, delta * 9);
+    station.person.rotation.z = pose.walking ? gait * 0.025 : 0;
+    for (let side = 0; side < 2; side++) {
+      const stride = gait * (side === 0 ? 1 : -1);
+      station.legs[side].rotation.x = THREE.MathUtils.lerp(
+        stride * 0.5,
+        -Math.PI / 2,
+        sit,
+      );
+      station.knees[side].rotation.x = THREE.MathUtils.lerp(
+        Math.max(0, -stride) * 0.55,
+        Math.PI / 2,
+        sit,
+      );
+      station.arms[side].rotation.set(
+        pose.typing
+          ? -1.25 + Math.sin(station.elapsed * 15 + side * Math.PI) * 0.09
+          : -stride * 0.45,
+        0,
+        side === 0 ? 0.07 : -0.07,
+      );
+      station.elbows[side].rotation.x = pose.typing ? -0.35 : -0.18;
     }
-    render(false);
+    if (pose.waving) {
+      station.arms[0].rotation.z =
+        -2.5 + (motion.matches ? 0 : Math.sin(station.elapsed * 4) * 0.18);
+      station.elbows[0].rotation.x = -0.3;
+    }
+    if (pose.coffee) {
+      station.arms[1].rotation.x = -0.6;
+      station.elbows[1].rotation.x = -1.4;
+      station.mug.rotation.x = 2;
+    }
+    station.mug.visible = pose.coffee;
+    station.head.rotation.set(
+      pose.typing ? 0.1 + Math.sin(station.elapsed * 9) * 0.025 : 0,
+      motion.matches
+        ? 0
+        : Math.sin(station.elapsed * 0.85 + station.index) * 0.14,
+      0,
+    );
+    station.anchor.set(
+      station.group.position.x + pose.x,
+      station.person.position.y + 1.45,
+      station.group.position.z + pose.z,
+    );
+    station.screen.emissiveIntensity =
+      station.phase === "new"
+        ? 0.02
+        : pose.typing
+          ? 0.2 + Math.sin(station.elapsed * 5) * 0.07
+          : 0.15;
+  }
+  function animate(time: number) {
+    const delta = lastTime ? Math.min((time - lastTime) / 1000, 0.05) : 0;
+    lastTime = time;
+    for (const station of stations) {
+      station.elapsed += delta;
+      station.pose = officePose(station.phase, station.elapsed, station.index);
+      applyPose(station, delta);
+    }
+    // Thirty frames per second is enough for the office; labels follow people.
+    if (time - lastRender >= 1000 / 30) {
+      render();
+      lastRender = time;
+    }
     schedule();
   }
   function resetCamera() {
