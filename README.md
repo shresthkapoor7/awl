@@ -57,6 +57,8 @@ For a UI-only preview, run `npm run dev:web` and open the local URL printed by V
 
 Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys.
 
+The browser’s **…** menu includes hard reload, DevTools for the active page, a separate preview window, device viewport controls, appearance, zoom, and per-agent cookie/cache clearing. Closing the separate preview returns the same live tab to the workspace. The expand button at the top fills the app with the browser; Escape restores the split view. Device presets, custom dimensions, and rotation preview responsive layouts without changing the session. Appearance follows System, Light, or Dark across the preview browsers; the workspace remains dark.
+
 Web pages run sandboxed without Node or the app's IPC bridge. The browser supports HTTP/HTTPS navigation; downloads, external app links, and permission-dependent features such as camera or geolocation are not connected yet. Browser automation, recording, persistent profiles, and crash recovery are future work.
 The office supports orbit, zoom, reset, and reduced motion. It stops rendering when closed or when the app is hidden. If WebGL is unavailable, the agent list remains usable. Scene assets ship locally.
 

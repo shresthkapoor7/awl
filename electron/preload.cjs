@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld("awlBrowser", {
   present: (agentId, lease, bounds) =>
     ipcRenderer.invoke("browser:present", { agentId, lease, bounds }),
   hide: (lease) => ipcRenderer.invoke("browser:hide", lease),
+  onExitFullscreen: (listener) => {
+    const handle = () => listener();
+    ipcRenderer.on("browser:exit-fullscreen", handle);
+    return () => ipcRenderer.removeListener("browser:exit-fullscreen", handle);
+  },
   onFocusAddress: (listener) => {
     const handle = () => listener();
     ipcRenderer.on("browser:focus-address", handle);

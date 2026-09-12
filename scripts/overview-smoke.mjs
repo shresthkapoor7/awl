@@ -243,7 +243,18 @@ try {
     BrowserWindow.getAllWindows()[0].setSize(1000, 700),
   );
   await page.waitForFunction(() => window.innerWidth <= 1000);
-  await page.screenshot({ path: "test-results/awl-office-compact.png" });
+  // A resized hidden native window may not produce a compositor frame for a
+  // screenshot. Briefly show it without taking focus, then hide it again.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].showInactive(),
+  );
+  try {
+    await page.screenshot({ path: "test-results/awl-office-compact.png" });
+  } finally {
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].hide(),
+    );
+  }
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -295,6 +306,9 @@ try {
   console.log(
     "Passed: 3D rendering, camera controls, mesh/label selection, draft and handoff preservation, live state, new agents, reduced motion, compact layout, WebGL fallback, local assets.",
   );
+} catch (error) {
+  console.error(error);
+  throw error;
 } finally {
   await app.close();
 }

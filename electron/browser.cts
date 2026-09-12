@@ -1,5 +1,8 @@
 import {
+  app,
   BrowserWindow,
+  Menu,
+  nativeTheme,
   WebContentsView,
   ipcMain,
   session,
@@ -13,6 +16,7 @@ import type {
   BrowserState,
   BrowserBounds,
   BrowserResult,
+  BrowserCommand,
 } from "../shared/browser.js";
 
 type Tab = {
@@ -20,6 +24,11 @@ type Tab = {
   view: WebContentsView;
   requestedURL: string;
   error: string | null;
+  preview: BrowserWindow | null;
+  device: { enabled: boolean; width: number; height: number };
+  viewportKey: string;
+  emulating: boolean;
+  ready: boolean;
 };
 type AgentBrowser = {
   id: string;
@@ -70,6 +79,11 @@ export function installBrowser(window: BrowserWindow) {
   } | null = null;
   let attached: WebContentsView | null = null;
   let disposed = false;
+  let quitting = false;
+  const beforeQuit = () => {
+    quitting = true;
+  };
+  app.on("before-quit", beforeQuit);
 
   function authorize(event: IpcMainInvokeEvent) {
     if (
@@ -86,6 +100,7 @@ export function installBrowser(window: BrowserWindow) {
       agentId: browser.id,
       activeTabId: browser.active,
       notice: browser.notice,
+      appearance: nativeTheme.themeSource,
       tabs: browser.tabs.map((tab) => {
         const wc = tab.view.webContents;
         return {
@@ -96,6 +111,9 @@ export function installBrowser(window: BrowserWindow) {
           canGoBack: wc.navigationHistory.canGoBack(),
           canGoForward: wc.navigationHistory.canGoForward(),
           error: tab.error,
+          zoom: wc.getZoomFactor(),
+          detached: !!tab.preview,
+          device: { ...tab.device },
         };
       }),
     };
@@ -107,13 +125,285 @@ export function installBrowser(window: BrowserWindow) {
     }
     attached = null;
   }
+  function applyViewport(tab: Tab, bounds: BrowserBounds) {
+    const { width, height, x, y } = bounds;
+    const device = tab.device;
+    const scale = Math.min(width / device.width, height / device.height, 1);
+    const key = `${width}:${height}:${device.enabled}:${device.width}:${device.height}`;
+    if (device.enabled) {
+      const fittedWidth = Math.max(1, Math.floor(device.width * scale));
+      const fittedHeight = Math.max(1, Math.floor(device.height * scale));
+      tab.view.setBounds({
+        x: x + Math.floor((width - fittedWidth) / 2),
+        y: y + Math.floor((height - fittedHeight) / 2),
+        width: fittedWidth,
+        height: fittedHeight,
+      });
+      if (tab.ready && tab.viewportKey !== key) {
+        tab.view.webContents.enableDeviceEmulation({
+          screenPosition: "mobile",
+          screenSize: { width: device.width, height: device.height },
+          viewPosition: { x: 0, y: 0 },
+          deviceScaleFactor: 1,
+          viewSize: { width: device.width, height: device.height },
+          scale,
+        });
+        tab.emulating = true;
+      }
+    } else {
+      if (tab.emulating) {
+        tab.view.webContents.disableDeviceEmulation();
+        tab.emulating = false;
+      }
+      tab.view.setBounds(bounds);
+    }
+    tab.viewportKey = tab.ready ? key : "";
+    tab.view.setVisible(width > 0 && height > 0);
+  }
+  function layoutPreview(tab: Tab) {
+    if (!tab.preview || tab.preview.isDestroyed()) return;
+    const { width, height } = tab.preview.getContentBounds();
+    applyViewport(tab, { x: 0, y: 0, width, height });
+  }
+  function returnToWorkspace(browser: AgentBrowser, tab: Tab) {
+    const preview = tab.preview;
+    if (!preview) return;
+    tab.preview = null;
+    if (!preview.isDestroyed()) {
+      preview.contentView.removeChildView(tab.view);
+      preview.destroy();
+    }
+    tab.viewportKey = "";
+    publish(browser);
+  }
+  function openPreview(browser: AgentBrowser, tab: Tab) {
+    if (tab.preview) {
+      tab.preview.show();
+      tab.preview.focus();
+      return;
+    }
+    if (attached === tab.view) detach();
+    const preview = new BrowserWindow({
+      width: 1100,
+      height: 800,
+      minWidth: 360,
+      minHeight: 300,
+      title: `${tab.view.webContents.getTitle() || "Browser"} — awl preview`,
+      backgroundColor: "#0a0a0a",
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+    preview.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    preview.webContents.on("will-navigate", (event) => event.preventDefault());
+    tab.preview = preview;
+    tab.viewportKey = "";
+    preview.contentView.addChildView(tab.view);
+    preview.on("resize", () => layoutPreview(tab));
+    preview.on("close", (event) => {
+      if (quitting) {
+        preview.contentView.removeChildView(tab.view);
+        tab.preview = null;
+        return;
+      }
+      event.preventDefault();
+      returnToWorkspace(browser, tab);
+    });
+    layoutPreview(tab);
+    preview.show();
+    publish(browser);
+  }
+  async function browserTool(
+    browser: AgentBrowser,
+    tab: Tab,
+    input: BrowserCommand,
+  ) {
+    const wc = tab.view.webContents;
+    switch (input.action) {
+      case "hard-reload":
+        if (tab.error) {
+          tab.error = null;
+          void load(browser, tab, tab.requestedURL);
+        } else wc.reloadIgnoringCache();
+        break;
+      case "devtools":
+        wc.openDevTools({ mode: "detach" });
+        break;
+      case "detach":
+        openPreview(browser, tab);
+        break;
+      case "reattach":
+        returnToWorkspace(browser, tab);
+        break;
+      case "toggle-device":
+        tab.device.enabled = !tab.device.enabled;
+        break;
+      case "device-size":
+        if (
+          ![input.width, input.height].every(
+            (value) => Number.isInteger(value) && value >= 240 && value <= 3840,
+          )
+        )
+          throw new Error(
+            "Device dimensions must be between 240 and 3840 pixels.",
+          );
+        tab.device = {
+          enabled: true,
+          width: input.width,
+          height: input.height,
+        };
+        break;
+      case "zoom":
+        if (
+          typeof input.factor !== "number" ||
+          !Number.isFinite(input.factor) ||
+          input.factor < 0.25 ||
+          input.factor > 3
+        )
+          throw new Error("Zoom must be between 25% and 300%.");
+        wc.setZoomFactor(input.factor);
+        break;
+      case "appearance":
+        if (!["system", "light", "dark"].includes(input.theme))
+          throw new Error("Invalid appearance.");
+        nativeTheme.themeSource = input.theme;
+        break;
+      case "clear-cookies":
+        await browser.session.clearStorageData({ storages: ["cookies"] });
+        browser.notice = "Cookies cleared for this agent.";
+        break;
+      case "clear-cache":
+        await browser.session.clearCache();
+        browser.notice = "Cache cleared for this agent.";
+        break;
+      case "options": {
+        const run = (command: BrowserCommand) => {
+          void browserTool(browser, tab, command)
+            .then(() => publish(browser))
+            .catch((error) => {
+              if (disposed || wc.isDestroyed()) return;
+              browser.notice =
+                error instanceof Error
+                  ? error.message
+                  : "Browser action failed.";
+              publish(browser);
+            });
+        };
+        const agentId = browser.id;
+        const zoom = wc.getZoomFactor();
+        const menu = Menu.buildFromTemplate([
+          {
+            id: "hard-reload",
+            label: "Hard reload",
+            click: () => run({ action: "hard-reload", agentId }),
+          },
+          {
+            id: "devtools",
+            label: "Open DevTools",
+            click: () => run({ action: "devtools", agentId }),
+          },
+          {
+            id: "preview",
+            label: tab.preview
+              ? "Return preview to workspace"
+              : "Open separate preview window",
+            click: () =>
+              run({ action: tab.preview ? "reattach" : "detach", agentId }),
+          },
+          {
+            id: "device",
+            label: tab.device.enabled
+              ? "Hide device toolbar"
+              : "Show device toolbar",
+            click: () => run({ action: "toggle-device", agentId }),
+          },
+          {
+            label: "Appearance",
+            submenu: (["system", "light", "dark"] as const).map((theme) => ({
+              id: `appearance-${theme}`,
+              label:
+                theme === "system"
+                  ? "System"
+                  : theme === "dark"
+                    ? "Dark"
+                    : "Light",
+              type: "radio" as const,
+              checked: nativeTheme.themeSource === theme,
+              click: () => run({ action: "appearance", agentId, theme }),
+            })),
+          },
+          { type: "separator" },
+          {
+            label: `Zoom · ${Math.round(zoom * 100)}%`,
+            submenu: [
+              {
+                id: "zoom-out",
+                label: "Zoom out",
+                enabled: zoom > 0.25,
+                click: () =>
+                  run({
+                    action: "zoom",
+                    agentId,
+                    factor: Math.max(
+                      0.25,
+                      Math.round((zoom - 0.1) * 100) / 100,
+                    ),
+                  }),
+              },
+              {
+                id: "zoom-reset",
+                label: "Reset to 100%",
+                click: () => run({ action: "zoom", agentId, factor: 1 }),
+              },
+              {
+                id: "zoom-in",
+                label: "Zoom in",
+                enabled: zoom < 3,
+                click: () =>
+                  run({
+                    action: "zoom",
+                    agentId,
+                    factor: Math.min(3, Math.round((zoom + 0.1) * 100) / 100),
+                  }),
+              },
+            ],
+          },
+          { type: "separator" },
+          { label: "Profile: This agent", enabled: false },
+          {
+            id: "clear-cookies",
+            label: "Clear cookies",
+            click: () => run({ action: "clear-cookies", agentId }),
+          },
+          {
+            id: "clear-cache",
+            label: "Clear cache",
+            click: () => run({ action: "clear-cache", agentId }),
+          },
+        ]);
+        menu.popup({ window });
+        break;
+      }
+      default:
+        throw new Error("Unknown browser command.");
+    }
+    layoutPreview(tab);
+  }
+
   function layout() {
     if (disposed || window.isDestroyed()) return;
     const browser = presentation && browsers.get(presentation.agentId);
     const tab =
       browser && browser.tabs.find((tab) => tab.id === browser.active);
     const show =
-      presentation && tab && !tab.error && tab.requestedURL !== "about:blank";
+      presentation &&
+      tab &&
+      !tab.preview &&
+      !tab.error &&
+      tab.requestedURL !== "about:blank";
     const view = show ? tab.view : null;
     if (attached !== view) {
       detach();
@@ -125,7 +415,7 @@ export function installBrowser(window: BrowserWindow) {
     for (const item of browsers.values())
       for (const tab of item.tabs)
         if (!tab.view.webContents.isDestroyed())
-          tab.view.webContents.setAudioMuted(tab.view !== view);
+          tab.view.webContents.setAudioMuted(tab.view !== view && !tab.preview);
     if (!view || !presentation) return;
     const factor = window.webContents.getZoomFactor();
     const area = window.getContentBounds();
@@ -140,8 +430,7 @@ export function installBrowser(window: BrowserWindow) {
       0,
       Math.min(area.height - y, Math.round(rect.height * factor)),
     );
-    view.setBounds({ x, y, width, height });
-    view.setVisible(width > 0 && height > 0);
+    applyViewport(tab!, { x, y, width, height });
   }
   function publish(browser: AgentBrowser) {
     if (disposed || window.isDestroyed()) return;
@@ -149,6 +438,7 @@ export function installBrowser(window: BrowserWindow) {
     window.webContents.send("browser:state", state(browser));
   }
   function removeTab(browser: AgentBrowser, tab: Tab, close = true) {
+    if (tab.preview) returnToWorkspace(browser, tab);
     if (attached === tab.view) detach();
     browser.tabs = browser.tabs.filter((item) => item !== tab);
     if (browser.active === tab.id)
@@ -179,11 +469,22 @@ export function installBrowser(window: BrowserWindow) {
       view,
       requestedURL: "about:blank",
       error: null,
+      preview: null,
+      device: { enabled: false, width: 390, height: 844 },
+      viewportKey: "",
+      emulating: false,
+      ready: false,
     };
     view.setBackgroundColor("#0a0a0a");
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
+    wc.on("dom-ready", () => {
+      tab.ready = true;
+      tab.viewportKey = "";
+      layoutPreview(tab);
+      publish(browser);
+    });
     wc.setWindowOpenHandler((details) => {
       if (
         (!webURL(details.url) && details.url !== "about:blank") ||
@@ -233,7 +534,11 @@ export function installBrowser(window: BrowserWindow) {
       }
       publish(browser);
     });
-    const changed = () => publish(browser);
+    const changed = () => {
+      if (tab.preview && !tab.preview.isDestroyed())
+        tab.preview.setTitle(`${wc.getTitle() || "Browser"} — awl preview`);
+      publish(browser);
+    };
     wc.on("did-start-loading", changed);
     wc.on("did-stop-loading", changed);
     wc.on("did-navigate", changed);
@@ -247,6 +552,9 @@ export function installBrowser(window: BrowserWindow) {
       }
     });
     wc.on("render-process-gone", () => {
+      tab.ready = false;
+      tab.emulating = false;
+      tab.viewportKey = "";
       tab.error = "This tab stopped responding. Reload to try again.";
       publish(browser);
     });
@@ -255,6 +563,8 @@ export function installBrowser(window: BrowserWindow) {
         removeTab(browser, tab, false);
     });
     wc.on("before-input-event", (event, input) => {
+      if (input.key === "Escape" && !tab.preview)
+        window.webContents.send("browser:exit-fullscreen");
       if ((input.control || input.meta) && input.key.toLowerCase() === "l") {
         event.preventDefault();
         window.webContents.focus();
@@ -315,69 +625,72 @@ export function installBrowser(window: BrowserWindow) {
       }
     }
   }
-  ipcMain.handle("browser:command", (event, input: unknown): BrowserResult => {
-    authorize(event);
-    try {
-      if (
-        !input ||
-        typeof input !== "object" ||
-        !("action" in input) ||
-        !("agentId" in input)
-      )
-        throw new Error("Invalid browser command.");
-      const browser = getBrowser(input.agentId);
-      const tab = browser.tabs.find((tab) => tab.id === browser.active)!;
-      const wc = tab.view.webContents;
-      browser.notice = null;
-      switch (input.action) {
-        case "get":
-          break;
-        case "navigate":
-          void load(
-            browser,
-            tab,
-            normalizeURL("url" in input ? input.url : null),
-          );
-          break;
-        case "back":
-          if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
-          break;
-        case "forward":
-          if (wc.navigationHistory.canGoForward())
-            wc.navigationHistory.goForward();
-          break;
-        case "reload":
-          if (tab.error) void load(browser, tab, tab.requestedURL);
-          else wc.reload();
-          break;
-        case "stop":
-          wc.stop();
-          break;
-        case "new-tab":
-          createTab(browser);
-          break;
-        case "select-tab":
-        case "close-tab": {
-          const target = browser.tabs.find(
-            (tab) => "tabId" in input && tab.id === input.tabId,
-          );
-          if (!target) throw new Error("That tab is no longer available.");
-          if (input.action === "select-tab") browser.active = target.id;
-          else removeTab(browser, target);
-          break;
+  ipcMain.handle(
+    "browser:command",
+    async (event, input: unknown): Promise<BrowserResult> => {
+      authorize(event);
+      try {
+        if (
+          !input ||
+          typeof input !== "object" ||
+          !("action" in input) ||
+          !("agentId" in input)
+        )
+          throw new Error("Invalid browser command.");
+        const browser = getBrowser(input.agentId);
+        const tab = browser.tabs.find((tab) => tab.id === browser.active)!;
+        const wc = tab.view.webContents;
+        browser.notice = null;
+        switch (input.action) {
+          case "get":
+            break;
+          case "navigate":
+            void load(
+              browser,
+              tab,
+              normalizeURL("url" in input ? input.url : null),
+            );
+            break;
+          case "back":
+            if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
+            break;
+          case "forward":
+            if (wc.navigationHistory.canGoForward())
+              wc.navigationHistory.goForward();
+            break;
+          case "reload":
+            if (tab.error) void load(browser, tab, tab.requestedURL);
+            else wc.reload();
+            break;
+          case "stop":
+            wc.stop();
+            break;
+          case "new-tab":
+            createTab(browser);
+            break;
+          case "select-tab":
+          case "close-tab": {
+            const target = browser.tabs.find(
+              (tab) => "tabId" in input && tab.id === input.tabId,
+            );
+            if (!target) throw new Error("That tab is no longer available.");
+            if (input.action === "select-tab") browser.active = target.id;
+            else removeTab(browser, target);
+            break;
+          }
+          default:
+            await browserTool(browser, tab, input as BrowserCommand);
         }
-        default:
-          throw new Error("Unknown browser command.");
+        publish(browser);
+        return { state: state(browser) };
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error ? error.message : "Browser request failed.",
+        };
       }
-      publish(browser);
-      return { state: state(browser) };
-    } catch (error) {
-      return {
-        error:
-          error instanceof Error ? error.message : "Browser request failed.",
-      };
-    }
-  });
+    },
+  );
   ipcMain.handle("browser:present", (event, input) => {
     authorize(event);
     if (
@@ -412,9 +725,15 @@ export function installBrowser(window: BrowserWindow) {
     presentation = null;
     detach();
   });
+  const themeChanged = () => {
+    for (const browser of browsers.values()) publish(browser);
+  };
+  nativeTheme.on("updated", themeChanged);
   window.on("resize", layout);
   window.on("closed", () => {
     disposed = true;
+    app.removeListener("before-quit", beforeQuit);
+    nativeTheme.removeListener("updated", themeChanged);
     for (const channel of [
       "browser:command",
       "browser:present",
@@ -422,9 +741,11 @@ export function installBrowser(window: BrowserWindow) {
     ])
       ipcMain.removeHandler(channel);
     for (const browser of browsers.values())
-      for (const tab of browser.tabs)
+      for (const tab of browser.tabs) {
+        if (tab.preview) returnToWorkspace(browser, tab);
         if (!tab.view.webContents.isDestroyed())
           tab.view.webContents.close({ waitForBeforeUnload: false });
+      }
     browsers.clear();
   });
 }

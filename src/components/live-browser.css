@@ -115,3 +115,50 @@
     animation: none;
   }
 }
+.browser-fullscreen {
+  position: fixed;
+  inset: 56px 0 0;
+  height: auto;
+  z-index: 20;
+}
+.browser-tabs > .icon-button:last-child {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.device-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.device-toolbar input,
+.device-toolbar select {
+  color-scheme: dark;
+  background: var(--base);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 5px;
+  height: 28px;
+  min-width: 0;
+}
+.device-toolbar input {
+  width: 54px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.device-toolbar input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+.device-toolbar select {
+  flex: 1;
+  max-width: 110px;
+}
+.device-toolbar .icon-button {
+  width: 26px;
+  height: 28px;
+  flex-shrink: 0;
+}

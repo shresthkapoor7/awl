@@ -4,7 +4,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
 
+let cacheRequests = 0;
 const server = createServer((req, res) => {
+  if (req.url === "/cached") {
+    res.writeHead(200, {
+      "content-type": "text/plain",
+      "cache-control": "max-age=3600",
+    });
+    res.end(String(++cacheRequests));
+    return;
+  }
   if (req.url === "/broken") {
     req.socket.destroy();
     return;
@@ -15,7 +24,7 @@ const server = createServer((req, res) => {
     "content-security-policy": "frame-ancestors 'none'",
   });
   const style =
-    "<style>body{font:16px system-ui;background:#f5f1e8;color:#202a25;padding:40px}input,button,a{display:block;margin:18px 0;padding:12px}input{width:75%}button{cursor:pointer}small{color:#617369}</style>";
+    '<meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font:16px system-ui;background:#f5f1e8;color:#202a25;padding:40px}input,button,a{display:block;margin:18px 0;padding:12px}input{width:75%}button{cursor:pointer}small{color:#617369}</style>';
   if (req.url === "/auth")
     res.end(
       `${style}<title>Sign in</title><h1>Local sign in</h1><button onclick="document.cookie='signed_in=yes;path=/';window.opener.postMessage('signed in',location.origin);window.close()">Finish sign in</button>`,
@@ -74,9 +83,12 @@ try {
         .map((page) => page.url())}`,
     );
   };
+  const mainWindowId = await app.evaluate(
+    ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id,
+  );
   const attached = () =>
-    app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
+    app.evaluate(({ BrowserWindow }, id) => {
+      const window = BrowserWindow.fromId(id);
       return window.contentView.children
         .filter(
           (view) => view.webContents && view.webContents !== window.webContents,
@@ -86,7 +98,7 @@ try {
           bounds: view.getBounds(),
           url: view.webContents.getURL(),
         }));
-    });
+    }, mainWindowId);
   const waitAttached = async (count) => {
     for (let i = 0; i < 100; i++) {
       if ((await attached()).length === count) return;
@@ -198,6 +210,189 @@ try {
     .click();
   assert.equal((await attached())[0].id, originalId);
 
+  // Exercise the real native menu callbacks without leaving an OS menu open.
+  const openOptions = async () => {
+    await app.evaluate(({ Menu }) => {
+      const original = Menu.prototype.popup;
+      Menu.prototype.popup = function () {
+        globalThis.awlTestMenu = this;
+        Menu.prototype.popup = original;
+      };
+    });
+    await page
+      .getByRole("button", { name: "Browser options", exact: true })
+      .click();
+  };
+  const menuAction = async (id) => {
+    await openOptions();
+    await app.evaluate((_electron, id) => {
+      const item = globalThis.awlTestMenu.getMenuItemById(id);
+      if (!item) throw new Error(`Missing menu item: ${id}`);
+      item.click();
+    }, id);
+  };
+  const browserState = () =>
+    page.evaluate(
+      async () =>
+        (
+          await window.awlBrowser.command({
+            action: "get",
+            agentId: "onboarding",
+          })
+        ).state,
+    );
+  await openOptions();
+  const labels = await app.evaluate(() =>
+    globalThis.awlTestMenu.items.map((item) => item.label),
+  );
+  for (const label of [
+    "Hard reload",
+    "Open DevTools",
+    "Open separate preview window",
+    "Show device toolbar",
+    "Appearance",
+    "Clear cookies",
+    "Clear cache",
+  ])
+    assert.ok(labels.includes(label), `Missing browser option: ${label}`);
+  await guest
+    .getByRole("textbox", { name: "Notes" })
+    .fill("Same tab, more room");
+  await page.getByRole("button", { name: "Enter browser fullscreen" }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".browser-panel").getBoundingClientRect().width ===
+      innerWidth,
+  );
+  await page.waitForTimeout(100);
+  assert.ok((await attached())[0].bounds.width > 1200);
+  assert.equal((await attached())[0].id, originalId);
+  // CDP keyboard events bypass Electron's native before-input-event hook.
+  await app.evaluate(({ BrowserWindow, webContents }, id) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.show();
+    window.focus();
+    const wc = webContents.fromId(id);
+    wc.focus();
+    wc.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+    wc.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+  }, originalId);
+  await page
+    .getByRole("button", { name: "Enter browser fullscreen" })
+    .waitFor();
+  assert.equal(
+    await guest.getByRole("textbox", { name: "Notes" }).inputValue(),
+    "Same tab, more room",
+  );
+
+  await menuAction("preview");
+  await page
+    .getByRole("heading", { name: "Open in a separate window." })
+    .waitFor();
+  await waitAttached(0);
+  const previewCount = await app.evaluate(
+    ({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().filter((win) =>
+        win.getTitle().endsWith("awl preview"),
+      ).length,
+  );
+  assert.equal(previewCount, 1);
+  await guest
+    .getByRole("textbox", { name: "Notes" })
+    .fill("Still the same page");
+  // Closing the preview window docks the live contents instead of destroying it.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .find((win) => win.getTitle().endsWith("awl preview"))
+      .close(),
+  );
+  await waitAttached(1);
+  assert.equal((await attached())[0].id, originalId);
+  assert.equal(
+    await guest.getByRole("textbox", { name: "Notes" }).inputValue(),
+    "Still the same page",
+  );
+
+  await menuAction("device");
+  await page.getByRole("form", { name: "Device toolbar" }).waitFor();
+  await guest.waitForFunction(() => innerWidth === 390);
+  await page.getByRole("button", { name: "Rotate viewport" }).click();
+  await guest.waitForFunction(() => innerWidth === 844);
+  await page
+    .getByRole("combobox", { name: "Device preset" })
+    .selectOption("Tablet");
+  await guest.waitForFunction(() => innerWidth === 768);
+  await page.getByRole("spinbutton", { name: "Viewport width" }).fill("600");
+  await page.getByRole("spinbutton", { name: "Viewport height" }).fill("900");
+  await page.getByRole("button", { name: "Apply viewport size" }).click();
+  await guest.waitForFunction(() => innerWidth === 600);
+  await page.getByRole("button", { name: "Hide device toolbar" }).click();
+  await page.waitForFunction(() => !document.querySelector(".device-toolbar"));
+
+  await menuAction("zoom-in");
+  const activeZoom = async () => {
+    const state = await browserState();
+    return state.tabs.find((tab) => tab.id === state.activeTabId).zoom;
+  };
+  assert.equal(Math.round((await activeZoom()) * 100), 110);
+  await menuAction("zoom-reset");
+  assert.equal(await activeZoom(), 1);
+  await guest.emulateMedia({ colorScheme: null });
+  await menuAction("appearance-dark");
+  await guest.waitForFunction(
+    () => matchMedia("(prefers-color-scheme: dark)").matches,
+  );
+  await menuAction("appearance-light");
+  await guest.waitForFunction(
+    () => matchMedia("(prefers-color-scheme: light)").matches,
+  );
+  await menuAction("appearance-system");
+  await menuAction("devtools");
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (
+      await app.evaluate(
+        ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),
+        originalId,
+      )
+    )
+      break;
+    await page.waitForTimeout(50);
+  }
+  assert.equal(
+    await app.evaluate(
+      ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),
+      originalId,
+    ),
+    true,
+  );
+  await app.evaluate(
+    ({ webContents }, id) => webContents.fromId(id).closeDevTools(),
+    originalId,
+  );
+  await menuAction("hard-reload");
+  await guest.waitForFunction(
+    () => document.querySelector("#notes")?.value === "",
+  );
+  await other.evaluate(() => {
+    document.cookie = "peer=keep;path=/";
+  });
+  await menuAction("clear-cookies");
+  await guest.waitForFunction(() => document.cookie === "");
+  assert.ok(
+    (await other.evaluate(() => document.cookie)).includes("peer=keep"),
+  );
+  assert.equal(
+    await guest.evaluate(() => localStorage.getItem("saved")),
+    "yes",
+  );
+  const cached = () =>
+    guest.evaluate(() => fetch("/cached").then((response) => response.text()));
+  assert.equal(await cached(), "1");
+  assert.equal(await cached(), "1");
+  await menuAction("clear-cache");
+  await page.getByText("Cache cleared for this agent.").waitFor();
+  assert.equal(await cached(), "2");
+
   // Reject privileged URL schemes, recover from a failed load, retain sessions on shell reload.
   await navigate("file:///etc/passwd");
   await page
@@ -258,11 +453,17 @@ try {
   // BrowserWindow.capturePage captures the shell renderer; the native guest is
   // a separate surface, so keep its rendered-page evidence alongside the shell.
   await guest.screenshot({ path: "test-results/awl-live-site.png" });
+  await menuAction("preview");
+  await page
+    .getByRole("heading", { name: "Open in a separate window." })
+    .waitFor();
+  // The finally block must also quit cleanly with a detached preview open.
   assert.deepEqual(errors, []);
   console.log(
-    "Passed: real browsing, form preservation, navigation/history/reload, native bounds, overview/capability/collapse, popup authentication, session isolation, URL validation, load recovery, renderer reload, tab lifecycle.",
+    "Passed: real browsing, form preservation, navigation/history/reload, native bounds, overview/capability/collapse, popup authentication, session isolation, URL validation, load recovery, renderer reload, tab lifecycle, fullscreen, device sizing, preview reattachment, DevTools, appearance, zoom, cookie/cache controls.",
   );
 } catch (error) {
+  console.error(error);
   console.error(
     await app.evaluate(({ webContents }) =>
       webContents

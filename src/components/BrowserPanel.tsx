@@ -1,7 +1,8 @@
-import { Code2, Globe2, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { Code2, Globe2, RotateCcw, Maximize2, Minimize2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { capabilityCode, type Agent } from "../demo";
 import { LiveBrowser } from "./LiveBrowser";
+import { IconButton } from "./ui";
 
 type Props = {
   agent: Agent;
@@ -12,6 +13,22 @@ type Props = {
 };
 
 export function BrowserPanel({ agent, tab, setTab, visible, onReplay }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!visible || tab !== "browser") setExpanded(false);
+  }, [visible, tab]);
+  useEffect(() => {
+    const exit = () => setExpanded(false);
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") exit();
+    };
+    window.addEventListener("keydown", keydown);
+    const unsubscribe = window.awlBrowser?.onExitFullscreen(exit);
+    return () => {
+      window.removeEventListener("keydown", keydown);
+      unsubscribe?.();
+    };
+  }, []);
   const [copied, setCopied] = useState(false);
   const finished = ["ready", "finished", "replaying"].includes(agent.phase);
   const statement = agent.kind === "statement";
@@ -25,7 +42,10 @@ export function BrowserPanel({ agent, tab, setTab, visible, onReplay }: Props) {
   }
 
   return (
-    <section className="browser-panel" aria-label="Session workspace">
+    <section
+      className={`browser-panel ${expanded ? "browser-fullscreen" : ""}`}
+      aria-label="Session workspace"
+    >
       <header className="panel-header">
         <div className="view-tabs" aria-label="Session views">
           <button
@@ -43,7 +63,19 @@ export function BrowserPanel({ agent, tab, setTab, visible, onReplay }: Props) {
             Capability{finished && <span className="tab-dot" />}
           </button>
         </div>
-        {tab === "capability" && <span className="sample-label">DEMO</span>}
+        {tab === "capability" ? (
+          <span className="sample-label">DEMO</span>
+        ) : (
+          <IconButton
+            label={
+              expanded ? "Exit browser fullscreen" : "Enter browser fullscreen"
+            }
+            aria-pressed={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </IconButton>
+        )}
       </header>
 
       {tab === "capability" ? (
