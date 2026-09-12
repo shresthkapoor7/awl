@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, tabIdSchema, ToolError } from "./core.cjs";
 import { cdp, inPage, observable } from "./page.cjs";
-import type { PageSnapshot } from "./browser-dom.cjs";
+import { consumeSnapshot, type PageSnapshot } from "./browser-dom.cjs";
 const keys: Record<string, number> = {
   Enter: 13,
   Tab: 9,
@@ -28,7 +28,10 @@ export const browserAction = defineTool(
   async (args, context) => {
     const wc = context.browser.target(context.agentId, args.tab_id);
     await observable(wc);
-    if (args.action === "press" && (!args.value || !(args.value in keys)))
+    if (
+      args.action === "press" &&
+      (!args.value || !Object.hasOwn(keys, args.value))
+    )
       throw new ToolError(
         "INVALID_ARGUMENTS",
         `Supported keys: ${Object.keys(keys).join(", ")}.`,
@@ -40,6 +43,7 @@ export const browserAction = defineTool(
       );
     if (["fill", "select"].includes(args.action) && args.value === null)
       throw new ToolError("INVALID_ARGUMENTS", "This action requires a value.");
+    consumeSnapshot(wc, args.frame_id, args.snapshot_id);
     const prepared = await inPage(
       wc,
       args.frame_id,
@@ -139,63 +143,74 @@ export const browserAction = defineTool(
             );
           const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
           const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
-          await cdp(wc, "Input.dispatchMouseEvent", {
-            type: "mousePressed",
-            x,
-            y,
-            button: "left",
-            clickCount: 1,
-          });
-          await cdp(wc, "Input.dispatchMouseEvent", {
-            type: "mouseReleased",
-            x,
-            y,
-            button: "left",
-            clickCount: 1,
-          });
+          try {
+            await cdp(wc, "Input.dispatchMouseEvent", {
+              type: "mousePressed",
+              x,
+              y,
+              button: "left",
+              clickCount: 1,
+            });
+          } finally {
+            await wc.debugger
+              .sendCommand("Input.dispatchMouseEvent", {
+                type: "mouseReleased",
+                x,
+                y,
+                button: "left",
+                clickCount: 1,
+              })
+              .catch(() => {});
+          }
         } finally {
           await cdp(wc, "Runtime.releaseObjectGroup", {
             objectGroup: "awl-action",
           }).catch(() => {});
         }
       } else if (args.action === "fill") {
-        await cdp(wc, "Input.dispatchKeyEvent", {
-          type: "keyDown",
+        const key = async (
+          down: Record<string, unknown>,
+          up: Record<string, unknown>,
+        ) => {
+          try {
+            await cdp(wc, "Input.dispatchKeyEvent", {
+              type: "keyDown",
+              ...down,
+            });
+          } finally {
+            await wc.debugger
+              .sendCommand("Input.dispatchKeyEvent", { type: "keyUp", ...up })
+              .catch(() => {});
+          }
+        };
+        const select = {
           key: "a",
           code: "KeyA",
           modifiers: process.platform === "darwin" ? 4 : 2,
-          commands: ["selectAll"],
-        });
-        await cdp(wc, "Input.dispatchKeyEvent", {
-          type: "keyUp",
-          key: "a",
-          code: "KeyA",
-          modifiers: process.platform === "darwin" ? 4 : 2,
-        });
-        if (args.value === "") {
+        };
+        await key({ ...select, commands: ["selectAll"] }, select);
+        if (args.value === "")
+          await key(
+            { key: "Backspace", windowsVirtualKeyCode: 8 },
+            { key: "Backspace", windowsVirtualKeyCode: 8 },
+          );
+        else await cdp(wc, "Input.insertText", { text: args.value });
+      } else if (args.action === "press") {
+        const key = {
+          key: args.value,
+          windowsVirtualKeyCode: keys[args.value!],
+        };
+        try {
           await cdp(wc, "Input.dispatchKeyEvent", {
             type: "keyDown",
-            key: "Backspace",
-            windowsVirtualKeyCode: 8,
+            ...key,
+            ...(args.value === "Enter" ? { text: "\r" } : {}),
           });
-          await cdp(wc, "Input.dispatchKeyEvent", {
-            type: "keyUp",
-            key: "Backspace",
-            windowsVirtualKeyCode: 8,
-          });
-        } else await cdp(wc, "Input.insertText", { text: args.value });
-      } else if (args.action === "press") {
-        await cdp(wc, "Input.dispatchKeyEvent", {
-          type: "keyDown",
-          key: args.value,
-          windowsVirtualKeyCode: keys[args.value!],
-          ...(args.value === "Enter" ? { text: "\r" } : {}),
-        });
-        await cdp(wc, "Input.dispatchKeyEvent", {
-          type: "keyUp",
-          key: args.value,
-          windowsVirtualKeyCode: keys[args.value!],
-        });
+        } finally {
+          await wc.debugger
+            .sendCommand("Input.dispatchKeyEvent", { type: "keyUp", ...key })
+            .catch(() => {});
+        }
       } else {
         const result = await inPage(
           wc,
@@ -216,7 +231,10 @@ export const browserAction = defineTool(
               select.dispatchEvent(new Event("input", { bubbles: true }));
               select.dispatchEvent(new Event("change", { bubbles: true }));
             } else
-              el.scrollBy({
+              (el === document.body
+                ? (document.scrollingElement ?? el)
+                : el
+              ).scrollBy({
                 top: args.value === "down" ? 600 : -600,
                 behavior: "instant",
               });

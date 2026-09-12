@@ -28,3 +28,11 @@ assert.equal(
 );
 assert.equal(toolDefinition(chatName).parameters.additionalProperties, false);
 console.log("Passed: chat naming, input validation, chat scope, tool schema.");
+const controller = new AbortController();
+const pending = dispatch(
+  { ...chatName, execute: async () => new Promise(() => {}) },
+  '{"name":"wait"}',
+  { ...context, signal: controller.signal },
+);
+controller.abort(new Error("test stop"));
+await assert.rejects(pending, /test stop/);

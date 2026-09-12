@@ -1,15 +1,18 @@
 import type { WebContents } from "electron";
-import { ToolError } from "./core.cjs";
+import { ToolError, toolSignal } from "./core.cjs";
 export async function cdp(
   wc: WebContents,
   method: string,
   params: Record<string, unknown> = {},
 ) {
+  toolSignal.getStore()?.throwIfAborted();
   if (wc.isDestroyed())
     throw new ToolError("TAB_NOT_FOUND", "The tab closed. List tabs again.");
   try {
     if (!wc.debugger.isAttached()) wc.debugger.attach("1.3");
-    return await wc.debugger.sendCommand(method, params);
+    const result = await wc.debugger.sendCommand(method, params);
+    toolSignal.getStore()?.throwIfAborted();
+    return result;
   } catch {
     throw new ToolError(
       "PAGE_CHANGED",
@@ -69,14 +72,24 @@ export async function observable(wc: WebContents) {
       wc,
       frame.id,
       () => {
-        const fields = document.querySelectorAll(
-          'input[type="password"],input[autocomplete="one-time-code"],input[autocomplete^="cc-"],input[autocomplete="current-password"],input[autocomplete="new-password"]',
-        );
-        return Array.from(fields).some(
-          (el) =>
-            el.getClientRects().length > 0 &&
-            getComputedStyle(el).visibility !== "hidden",
-        );
+        const roots: (Document | ShadowRoot)[] = [document];
+        let visited = 0;
+        while (roots.length) {
+          const root = roots.pop()!;
+          for (const el of root.querySelectorAll("*")) {
+            if (++visited > 20000) return true;
+            if (el.shadowRoot) roots.push(el.shadowRoot);
+            if (
+              el.matches(
+                'input[type="password"],input[autocomplete="one-time-code"],input[autocomplete^="cc-"],input[autocomplete="current-password"],input[autocomplete="new-password"]',
+              ) &&
+              el.getClientRects().length > 0 &&
+              getComputedStyle(el).visibility !== "hidden"
+            )
+              return true;
+          }
+        }
+        return false;
       },
       null,
     );

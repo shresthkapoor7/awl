@@ -1,7 +1,17 @@
 import { randomUUID } from "node:crypto";
+import type { WebContents } from "electron";
 import { z } from "zod";
 import { defineTool, tabIdSchema, ToolError } from "./core.cjs";
 import { inPage, observable } from "./page.cjs";
+const snapshots = new WeakMap<WebContents, Map<string, string>>();
+export function consumeSnapshot(wc: WebContents, frame: string, id: string) {
+  if (snapshots.get(wc)?.get(frame) !== id)
+    throw new ToolError(
+      "STALE_ELEMENT",
+      "Take a fresh DOM snapshot before acting.",
+    );
+  snapshots.get(wc)!.delete(frame);
+}
 export type PageSnapshot = {
   id: string;
   url: string;
@@ -71,7 +81,8 @@ export const browserDom = defineTool(
           nodes: new Map(),
           signature,
         };
-        const controls: Element[] = [];
+        const controls: Element[] = document.body ? [document.body] : [];
+        const shadowText: string[] = [];
         let visited = 0;
         const walk = (root: Document | ShadowRoot | Element) => {
           for (const el of root.children) {
@@ -86,7 +97,20 @@ export const browserDom = defineTool(
               )
             )
               controls.push(el);
-            if (el.shadowRoot) walk(el.shadowRoot);
+            if (el.shadowRoot) {
+              if (visible)
+                shadowText.push(
+                  Array.from(el.shadowRoot.children)
+                    .map((child) =>
+                      child instanceof HTMLElement
+                        ? child.innerText
+                        : child.textContent || "",
+                    )
+                    .join("\n")
+                    .slice(0, 12000),
+                );
+              walk(el.shadowRoot);
+            }
             walk(el);
           }
         };
@@ -132,7 +156,7 @@ export const browserDom = defineTool(
             };
           });
         holder.__awlSnapshot = snapshot;
-        const text = document.body?.innerText || "";
+        const text = [document.body?.innerText || "", ...shadowText].join("\n");
         return {
           snapshot_id: snapshotId,
           title: document.title,
@@ -146,6 +170,9 @@ export const browserDom = defineTool(
       },
       { snapshotId, offset, limit },
     );
+    const current = snapshots.get(wc) ?? new Map<string, string>();
+    current.set(frame.id, snapshotId);
+    snapshots.set(wc, current);
     return {
       data: {
         tab_id,

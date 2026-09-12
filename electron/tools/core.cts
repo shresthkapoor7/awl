@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { WebContents } from "electron";
 import type { BrowserState } from "../../shared/browser.js";
 
@@ -24,6 +25,20 @@ export type ToolContext = {
   signal: AbortSignal;
 };
 export type ToolOutput = { data: unknown; image?: string };
+export const toolSignal = new AsyncLocalStorage<AbortSignal>();
+export function abortable<T>(
+  pending: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    pending
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+    if (signal.aborted) abort();
+  });
+}
 export class ToolError extends Error {
   constructor(
     public code: string,
@@ -70,7 +85,9 @@ export async function dispatch(tool: Tool, raw: string, context: ToolContext) {
     };
   try {
     const args = JSON.parse(raw);
-    const output = await tool.execute(args, context);
+    const output = await toolSignal.run(context.signal, () =>
+      abortable(tool.execute(args, context), context.signal),
+    );
     context.signal.throwIfAborted();
     return { ok: true as const, ...output };
   } catch (error) {

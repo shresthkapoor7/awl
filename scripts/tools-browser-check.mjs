@@ -8,6 +8,29 @@ import { prepareElectron } from "./electron-runtime.mjs";
 const directory = await mkdtemp(join(tmpdir(), "awl-tools-"));
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+  if (req.url === "/sensitive") {
+    res.end('<input type="password" value="fixture-secret">');
+    return;
+  }
+  if (req.url === "/framed") {
+    res.end(
+      '<h1>Frames</h1><iframe src="/" style="width:600px;height:400px"></iframe>',
+    );
+    return;
+  }
+  if (req.url === "/shadow") {
+    res.end(
+      `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<label for="shadow">Shadow input</label><input id="shadow">';</script>`,
+    );
+    return;
+  }
+  if (req.url === "/shadow-secret") {
+    res.end(
+      `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<input type="password" value="fixture-secret">';</script>`,
+    );
+    return;
+  }
+
   res.end(
     `<html><head><title>Tool fixture</title></head><body><h1>Workbench</h1><label for="name">Name</label><input id="name"><button onclick="document.querySelector('#result').textContent=document.querySelector('#name').value">Save</button><p id="result">Not saved</p><a href="/next">Next</a></body></html>`,
   );
@@ -164,8 +187,65 @@ try {
     ).error.code,
     "CONDITION_TIMEOUT",
   );
+
+  // References cannot silently switch to replacement nodes.
+  const beforeReplace = await inspect();
+  await app.evaluate(
+    async (_, tabId) =>
+      globalThis.awlToolsTest.browser
+        .target("test", tabId)
+        .executeJavaScript(
+          'const old = document.querySelector("#name"); old.replaceWith(old.cloneNode(true));',
+        ),
+    tabId,
+  );
+  assert.equal(
+    (
+      await call("browser-action", "browserAction", {
+        ...actionArgs,
+        snapshot_id: beforeReplace.data.snapshot_id,
+        ref: beforeReplace.data.elements.find((el) => el.selector === "#name")
+          .ref,
+      })
+    ).error.code,
+    "STALE_ELEMENT",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/framed`,
+    tab_id: tabId,
+  });
+  const parent = await inspect();
+  assert.equal(parent.ok, true, JSON.stringify(parent));
+  assert.equal(parent.data.frames.length, 2);
+  const child = await call("browser-dom", "browserDom", {
+    tab_id: tabId,
+    frame_id: parent.data.frames[1].id,
+    offset: 0,
+    limit: 100,
+  });
+  assert.ok(child.data.elements.some((el) => el.name === "Name"));
+  await call("browser-start", "browserStart", {
+    url: `${base}/shadow`,
+    tab_id: tabId,
+  });
+  const shadow = await inspect();
+  assert.ok(shadow.data.elements.some((el) => el.name === "Shadow input"));
+  for (const path of ["sensitive", "shadow-secret"]) {
+    await call("browser-start", "browserStart", {
+      url: `${base}/${path}`,
+      tab_id: tabId,
+    });
+    assert.equal((await inspect()).error.code, "SENSITIVE_PAGE");
+    const blockedCapture = await call(
+      "browser-screenshot",
+      "browserScreenshot",
+      { tab_id: tabId },
+    );
+    assert.equal(blockedCapture.error.code, "SENSITIVE_PAGE");
+    assert.equal(blockedCapture.image, undefined);
+  }
   console.log(
-    "Passed: local browser tool navigation, non-web URL rejection, cross-chat isolation.",
+    "Passed: browser tools, real fill/click, stale refs, frames, shadow roots, sensitive capture blocks, waits, and chat isolation.",
   );
 } finally {
   await app.close();
