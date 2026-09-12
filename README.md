@@ -26,4 +26,41 @@ An optional 3D office overview will show agents' activity and highlight where at
 
 ## Status
 
-Architecture and product planning. Implementation has not started.
+Interactive Electron UI prototype. The workspace includes an agent sidebar, chat, a simulated browser, a human handoff, and a capability preview. All agent responses and browser content are sample data; no websites are visited, no AI calls are made, and no automation code is generated. Session changes stay in memory and reset on reload.
+
+The 3D overview and execution backend are not implemented yet.
+
+## Run locally
+
+Requires Node.js 22.12 or newer and npm. Electron is installed as a project dependency; a global installation is not needed. Its browser binary may download on the first launch.
+
+```sh
+npm ci
+npm run dev
+```
+
+To run the built UI in Electron:
+
+```sh
+npm start
+```
+
+For a browser-only preview, run `npm run dev:web` and open the local URL printed by Vite.
+
+## Explore the prototype
+
+1. Open **Member onboarding** and select **Take control**.
+2. Check the member confirmation in the sample browser.
+3. Select **Resume with awl** to see the completed workflow.
+4. Open **Capability** and select **Try a replay** for the simulated replay state.
+
+You can also switch agents, search sessions, create a new agent, and send messages to explore the conversation layout. **About this preview** explains the available interactions. The browser toolbar's reset button restarts the selected demo.
+
+## Checks
+
+```sh
+npm run build
+npm run test:ui
+```
+
+The UI check launches Electron and exercises takeover/resume, replay, session switching, chat, search, new sessions, and the compact layout. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
