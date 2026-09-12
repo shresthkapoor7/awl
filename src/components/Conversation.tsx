@@ -1,6 +1,7 @@
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../agents";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { Mark } from "./ui";
 type Props = {
   agent: Agent;
@@ -9,6 +10,7 @@ type Props = {
   startupError: string | null;
   onSend: (text: string) => Promise<boolean>;
   onStop: () => void;
+  onOpenLink: (url: string) => void;
 };
 export function Conversation({
   agent,
@@ -17,6 +19,7 @@ export function Conversation({
   startupError,
   onSend,
   onStop,
+  onOpenLink,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -77,7 +80,7 @@ export function Conversation({
               <strong>{message.role === "user" ? "You" : "awl"}</strong>
               {message.role === "assistant" && <span>{model}</span>}
             </div>
-            <p>{message.text}</p>
+            <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
           </article>
         ))}
         {!!agent.live.tools.length && (

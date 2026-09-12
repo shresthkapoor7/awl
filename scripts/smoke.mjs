@@ -96,7 +96,35 @@ try {
     ...chat,
     name: "Read the guide",
     status: "running",
-    messages: [{ id: "m1", role: "user", text: "Read the guide" }],
+    messages: [
+      { id: "m1", role: "user", text: "Read the guide" },
+      {
+        id: "m2",
+        role: "assistant",
+        text: [
+          "## Findings",
+          "",
+          "**Important** and *useful* with `inline code`.",
+          "",
+          "1. First",
+          "2. Second",
+          "",
+          "- [x] Checked",
+          "",
+          "| Name | Result |",
+          "| --- | --- |",
+          "| Guide | Ready |",
+          "",
+          "```ts",
+          "const ready = true;",
+          "```",
+          "",
+          "[Unsafe](javascript:alert(1))",
+          "![Remote](https://example.invalid/pixel.png)",
+          "<script>window.markdownExecuted = true</script>",
+        ].join("\n"),
+      },
+    ],
     tools: [{ id: "t1", name: "browser_dom", state: "running" }],
   };
   await app.evaluate(
@@ -107,6 +135,25 @@ try {
   await page.getByRole("button", { name: "Stop agent", exact: true }).waitFor();
   await page.getByText("Agent is working", { exact: true }).waitFor();
   assert.equal(await draft.inputValue(), "Keep my draft");
+  const markdown = page.locator(".assistant-message .markdown-message");
+  await markdown.getByRole("heading", { name: "Findings" }).waitFor();
+  assert.equal(await markdown.locator("strong").textContent(), "Important");
+  assert.equal(await markdown.locator("em").textContent(), "useful");
+  assert.equal(await markdown.locator("table tbody tr").count(), 1);
+  assert.equal(await markdown.locator("ol > li").count(), 2);
+  assert.equal(
+    await markdown.locator("pre code").textContent(),
+    "const ready = true;\n",
+  );
+  assert.equal(
+    await markdown.locator('input[type="checkbox"]').isChecked(),
+    true,
+  );
+  assert.equal(
+    await markdown.locator("img, script, a[href^='javascript:']").count(),
+    0,
+  );
+  assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
   await page.getByRole("button", { name: "New agent", exact: true }).click();
   await page.waitForFunction(
     () => document.querySelectorAll(".agent-item").length === 2,

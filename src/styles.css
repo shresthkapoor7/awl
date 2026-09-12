@@ -453,13 +453,6 @@ strong {
   color: var(--text);
   font-weight: 500;
 }
-.user-message p,
-.assistant-message p {
-  font-size: 13px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
 .assistant-message {
   margin-top: 24px;
 }

@@ -417,6 +417,15 @@ export function App() {
           key={`conversation-${agent.id}`}
           agent={agent}
           onSend={send}
+          onOpenLink={(url) => {
+            setBrowserOpen(true);
+            setMobileView("browser");
+            void window.awlBrowser?.command({
+              action: "navigate",
+              agentId: agent.id,
+              url,
+            });
+          }}
           enabled={ready && !startupError}
           startupError={startupError}
           model={model}
