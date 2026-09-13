@@ -135,26 +135,17 @@ try {
     );
     await wc.debugger.sendCommand("Input.insertText", { text: "taught query" });
   }, base);
-  await page
-    .getByRole("button", { name: "Stop & review", exact: true })
-    .click();
-  await page
-    .getByRole("textbox", { name: "Parameter for Search papers" })
-    .waitFor();
-  await page
-    .getByRole("textbox", { name: "Parameter for Search papers" })
-    .fill("query");
+  await page.getByRole("button", { name: "Stop & build", exact: true }).click();
+  await page.getByText(/Recording saved. Add OPENAI_API_KEY/).waitFor();
+  await page.getByText(/recorded steps/).click();
+  assert.equal(await page.locator(".recorded-steps input").count(), 0);
   assert(
-    await page
-      .getByRole("button", { name: "Use reviewed demonstration" })
-      .isVisible(),
+    await page.getByRole("button", { name: "Build capability" }).isVisible(),
   );
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await page.getByRole("tab", { name: "Chat", exact: true }).click();
   assert(
-    await page
-      .getByRole("button", { name: "Use reviewed demonstration" })
-      .isVisible(),
+    await page.getByRole("button", { name: "Build capability" }).isVisible(),
   );
   assert.equal(await page.getByText(/Run history ·/).count(), 1);
   await mkdir("test-results", { recursive: true });

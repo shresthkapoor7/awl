@@ -43,7 +43,7 @@ export function RecordingControls({ chat }: { chat: AgentChat }) {
           disabled={busy}
           onClick={() => void act("stop")}
         >
-          <Square size={12} /> Stop & review
+          <Square size={12} /> Stop & build
         </button>
       )}
       {error && (

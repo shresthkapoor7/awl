@@ -150,7 +150,15 @@ export function pageIsSensitive() {
   while (roots.length) {
     const root = roots.pop()!;
     for (const el of root.querySelectorAll("*")) {
-      if (++visited > 20000) return true;
+      // Large result feeds are not sensitive simply because they contain many
+      // ordinary nodes. Bound inspected controls, not decorative page content.
+      if (
+        el.matches(
+          'input,textarea,select,[contenteditable="true"],[role="textbox"],[role="spinbutton"]',
+        ) &&
+        ++visited > 20000
+      )
+        return true;
       if (el.shadowRoot) roots.push(el.shadowRoot);
       if (
         isSensitive(el) &&

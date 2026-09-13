@@ -163,15 +163,20 @@ export function Conversation({
           <RunHistory key={`history-${agent.id}`} events={agent.live.journal} />
         )}
         <Demonstration key={`demonstration-${agent.id}`} chat={agent.live} />
-        {agent.live.pending && (
-          <HumanRequest
-            key={agent.live.pending.id}
-            agentId={agent.id}
-            request={agent.live.pending}
-            capture={agent.live.control?.capture}
-            repair={agent.live.mode === "execution"}
-          />
-        )}
+        {agent.live.pending &&
+          !(
+            agent.live.pending.reason === "demonstration" &&
+            agent.live.demonstration &&
+            agent.live.demonstration.mode !== "off"
+          ) && (
+            <HumanRequest
+              key={agent.live.pending.id}
+              agentId={agent.id}
+              request={agent.live.pending}
+              capture={agent.live.control?.capture}
+              repair={agent.live.mode === "execution"}
+            />
+          )}
         {(stopError || startupError || agent.live.error) && (
           <p className="live-agent-error" role="alert">
             {stopError || startupError || agent.live.error}
