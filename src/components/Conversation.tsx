@@ -1,6 +1,7 @@
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../agents";
+import { HumanRequest } from "./HumanRequest";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { Mark } from "./ui";
 type Props = {
@@ -49,7 +50,8 @@ export function Conversation({
   }, [agent.messages.length, agent.live.tools.length]);
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim() || busy || sending || !enabled) return;
+    if (!draft.trim() || busy || sending || !enabled || agent.live.pending)
+      return;
     const text = draft;
     setSending(true);
     try {
@@ -137,6 +139,13 @@ export function Conversation({
               : "Thinking…"}
           </p>
         )}
+        {agent.live.pending && (
+          <HumanRequest
+            key={agent.live.pending.id}
+            agentId={agent.id}
+            request={agent.live.pending}
+          />
+        )}
         {(stopError || startupError || agent.live.error) && (
           <p className="live-agent-error" role="alert">
             {stopError || startupError || agent.live.error}
@@ -182,7 +191,9 @@ export function Conversation({
                 className="send-button"
                 type="submit"
                 aria-label="Send message"
-                disabled={!draft.trim() || sending || !enabled}
+                disabled={
+                  !draft.trim() || sending || !enabled || !!agent.live.pending
+                }
               >
                 <ArrowUp size={18} />
               </button>

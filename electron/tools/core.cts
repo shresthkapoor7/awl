@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { WebContents } from "electron";
+import type { PendingQuestion } from "../../shared/agent.js";
 import type { BrowserState } from "../../shared/browser.js";
 
 export interface BrowserAccess {
@@ -16,6 +17,8 @@ export interface BrowserAccess {
     tabId: string | null,
   ): BrowserState;
   target(agentId: string, tabId: string): WebContents;
+  onHumanInput?: (handler: (id: string) => void) => void;
+  setOwner?: (id: string, owner: "human" | "agent") => void;
 }
 export type ToolContext = {
   agentId: string;
@@ -23,6 +26,8 @@ export type ToolContext = {
   rename: (name: string) => void;
   artifactDirectory: string;
   signal: AbortSignal;
+  ask?: (request: Omit<PendingQuestion, "id">) => { request_id: string };
+  complete?: (summary: string) => void;
 };
 export type ToolOutput = { data: unknown; image?: string };
 export const toolSignal = new AsyncLocalStorage<AbortSignal>();

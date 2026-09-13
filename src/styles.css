@@ -904,3 +904,40 @@ strong {
   font-size: 12px;
   line-height: 1.6;
 }
+
+.human-request {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+  font-size: 13px;
+}
+.human-request p {
+  line-height: 1.7;
+}
+.human-request input {
+  background: var(--base);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px;
+  width: 100%;
+}
+.private-notice {
+  color: var(--muted);
+  font-size: 11px;
+}
+.request-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.request-choices button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.request-choices button[aria-pressed="true"] {
+  border-color: #777;
+}

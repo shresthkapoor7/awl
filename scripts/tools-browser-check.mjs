@@ -84,6 +84,14 @@ try {
   });
   assert.equal(opened.ok, true, JSON.stringify(opened));
   const tabId = opened.data.activeTabId;
+  await app.evaluate(() => {
+    globalThis.nativeInterruptions = 0;
+    globalThis.awlToolsTest.browser.onHumanInput((id) => {
+      globalThis.nativeInterruptions++;
+      globalThis.awlToolsTest.browser.setOwner(id, "human");
+    });
+    globalThis.awlToolsTest.browser.setOwner("test", "agent");
+  });
   assert.equal(opened.data.tabs[0].title, "Tool fixture");
   assert.equal(
     (
@@ -288,6 +296,21 @@ try {
     (await call("browser-screenshot", "browserScreenshot", { tab_id: tabId }))
       .ok,
     true,
+  );
+  assert.equal(
+    await app.evaluate(() => globalThis.nativeInterruptions),
+    0,
+    "automation input must not trigger human takeover",
+  );
+  await app.evaluate((_, tabId) => {
+    const wc = globalThis.awlToolsTest.browser.target("test", tabId);
+    wc.sendInputEvent({ type: "keyDown", keyCode: "A" });
+    wc.sendInputEvent({ type: "keyUp", keyCode: "A" });
+  }, tabId);
+  assert.equal(
+    await app.evaluate(() => globalThis.nativeInterruptions),
+    1,
+    "native input interrupts agent ownership",
   );
   console.log(
     "Passed: browser tools, real fill/click, stale refs, frames, shadow roots, sensitive capture blocks, waits, and chat isolation.",

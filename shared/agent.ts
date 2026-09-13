@@ -1,3 +1,16 @@
+export type PendingQuestion = {
+  id: string;
+  reason:
+    "authentication" | "clarification" | "demonstration" | "unexpected_state";
+  question: string;
+  choices: string[];
+  expected_text: string | null;
+};
+export type SessionControl = {
+  owner: "human" | "agent";
+  capture: "private" | "observe" | "recording";
+  generation: number;
+};
 export type AgentMessage = {
   id: string;
   role: "user" | "assistant";
@@ -12,7 +25,9 @@ export type ToolActivity = {
 export type AgentChat = {
   id: string;
   name: string;
-  status: "idle" | "running" | "error" | "stopped";
+  status: "idle" | "running" | "waiting" | "completed" | "error" | "stopped";
+  control?: SessionControl;
+  pending?: PendingQuestion | null;
   messages: AgentMessage[];
   tools: ToolActivity[];
   error: string | null;
@@ -31,5 +46,11 @@ export type AgentBridge = {
   state: () => Promise<{ enabled: boolean; model: string; chats: AgentChat[] }>;
   send: (id: string, text: string) => Promise<{ error?: string }>;
   stop: (id: string) => Promise<void>;
+  takeover: (id: string) => Promise<{ error?: string }>;
+  resume: (
+    id: string,
+    requestId: string,
+    answer: string,
+  ) => Promise<{ error?: string }>;
   subscribe: (listener: (chat: AgentChat) => void) => () => void;
 };

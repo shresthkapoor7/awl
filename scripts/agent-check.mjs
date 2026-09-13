@@ -86,7 +86,7 @@ assert.equal(runtime.list()[0].messages.at(-1).text, "Ready.");
 assert.equal(calls[0].model, TERRA_MODEL);
 assert.equal(calls[0].parallel_tool_calls, false);
 assert.equal(calls[0].store, false);
-assert.equal(calls[0].tools.length, 9);
+assert.equal(calls[0].tools.length, 11);
 assert.ok(
   calls[0].tools.every(
     (tool) => tool.strict && tool.parameters.additionalProperties === false,
@@ -170,4 +170,65 @@ assert.equal(late.list()[0].status, "stopped");
 assert.equal(late.list()[0].tools.length, 0);
 console.log(
   "Passed: Terra selection, tool result loop, strict validation recovery, unknown tools, serialization, cancellation, missing key.",
+);
+
+let questionCalls = 0;
+const questioning = new AgentRuntime({
+  directory: "/unused",
+  publish: () => {},
+  browser: { tabs: () => ({ tabs: [], activeTabId: "" }) },
+  client: {
+    responses: {
+      create: async () => {
+        questionCalls++;
+        return questionCalls === 1
+          ? {
+              status: "completed",
+              output_text: "",
+              output: [
+                functionCall(
+                  "ask_user",
+                  {
+                    reason: "clarification",
+                    question: "Which workspace?",
+                    choices: ["Personal", "Team"],
+                    expected_text: null,
+                  },
+                  "question-1",
+                ),
+              ],
+            }
+          : {
+              status: "completed",
+              output_text: "Answer received.",
+              output: [],
+            };
+      },
+    },
+  },
+});
+questioning.send("ask", "Find the workspace");
+await finished(questioning);
+const waiting = questioning.list()[0];
+assert.equal(waiting.status, "waiting");
+assert.equal(waiting.control.owner, "human");
+assert.equal(waiting.control.capture, "private");
+assert.equal(questionCalls, 1);
+assert.ok(questioning.send("ask", "bypass resume").error);
+assert.ok((await questioning.resume("ask", "stale", "Team")).error);
+assert.deepEqual(
+  await questioning.resume("ask", waiting.pending.id, "Team"),
+  {},
+);
+assert.ok((await questioning.resume("ask", waiting.pending.id, "Team")).error);
+await finished(questioning);
+assert.equal(questionCalls, 2);
+assert.equal(
+  questioning.list()[0].status,
+  "idle",
+  "ending an API response is not task completion",
+);
+assert.equal(questioning.list()[0].pending, null);
+console.log(
+  "Passed: structured questions, private ownership, explicit resume, stale request rejection, truthful completion.",
 );

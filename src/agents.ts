@@ -18,11 +18,15 @@ export function fromChat(chat: AgentChat): Agent {
     phase:
       chat.status === "running"
         ? "replaying"
-        : chat.status === "error" || chat.status === "stopped"
+        : chat.status === "error" ||
+            chat.status === "stopped" ||
+            chat.status === "waiting"
           ? "waiting"
-          : chat.messages.length
+          : chat.status === "completed"
             ? "finished"
-            : "new",
+            : chat.messages.length
+              ? "ready"
+              : "new",
   };
 }
 export function blankAgent() {

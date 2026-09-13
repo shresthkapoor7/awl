@@ -1,5 +1,6 @@
 import type { WebContents } from "electron";
 import { ToolError, toolSignal } from "./core.cjs";
+export const automationInput = new WeakSet<WebContents>();
 export async function cdp(
   wc: WebContents,
   method: string,
@@ -10,7 +11,13 @@ export async function cdp(
     throw new ToolError("TAB_NOT_FOUND", "The tab closed. List tabs again.");
   try {
     if (!wc.debugger.isAttached()) wc.debugger.attach("1.3");
-    const result = await wc.debugger.sendCommand(method, params);
+    if (method.startsWith("Input.")) automationInput.add(wc);
+    let result;
+    try {
+      result = await wc.debugger.sendCommand(method, params);
+    } finally {
+      automationInput.delete(wc);
+    }
     toolSignal.getStore()?.throwIfAborted();
     return result;
   } catch {

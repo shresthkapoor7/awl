@@ -43,7 +43,7 @@ try {
   const done = {
     ...second,
     name: "Read the guide",
-    status: "idle",
+    status: "completed",
     messages: [{ id: "answer", role: "assistant", text: "Done." }],
   };
   await publish(working);
@@ -99,7 +99,7 @@ try {
     .locator(".office-status[data-phase='waiting']")
     .waitFor();
   await status("Research", "Needs you");
-  await publish({ ...working, status: "idle" });
+  await publish({ ...working, status: "completed" });
   await page
     .getByRole("button", { name: "Open Research chat", exact: true })
     .locator(".office-status[data-phase='finished']")

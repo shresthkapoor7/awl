@@ -80,6 +80,23 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     authorize(event);
     if (typeof id === "string") runtime.stop(id);
   });
+  ipcMain.handle("agent:takeover", (event, id) => {
+    authorize(event);
+    return typeof id === "string"
+      ? runtime.takeover(id)
+      : { error: "Invalid chat." };
+  });
+  ipcMain.handle("agent:resume", (event, input) => {
+    authorize(event);
+    if (
+      !input ||
+      typeof input.id !== "string" ||
+      typeof input.requestId !== "string" ||
+      typeof input.answer !== "string"
+    )
+      return { error: "Invalid resume request." };
+    return runtime.resume(input.id, input.requestId, input.answer);
+  });
   window.once("closed", () => {
     runtime.close();
     for (const name of [
@@ -88,6 +105,8 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       "agent:capabilities",
       "agent:send",
       "agent:stop",
+      "agent:takeover",
+      "agent:resume",
     ])
       ipcMain.removeHandler(name);
   });
