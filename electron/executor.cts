@@ -170,7 +170,19 @@ export class Execution {
       throw new Error(
         "Check the uncertain action and confirm it completed before continuing.",
       );
-    if (confirmCompleted && this.state.uncertain) this.state.step++;
+    const manual = this.state.result?.kind === "failure" && this.state.result.code === "RISKY_ACTION";
+    if (manual && !confirmCompleted)
+      throw new Error("Complete the blocked action directly, then confirm it completed.");
+    if (confirmCompleted && (this.state.uncertain || manual)) {
+      const next = this.plan.plan[this.state.step + 1];
+      if (!this.tabId || !next || next.operation === "navigate")
+        throw new Error("No observable continuation checkpoint. Enter Repair instead of guessing.");
+      const target = bindTarget(next.target ?? cssTarget(next.selector!), this.state.inputs);
+      const observed = await resolveTarget(this.context.browser.target(this.context.agentId, this.tabId), target);
+      if (next.operation === "assert_text" && !observed.text.includes(bindText(next.value!, this.state.inputs)))
+        throw new Error("The continuation checkpoint has not been reached.");
+      this.state.step++;
+    }
     this.state.status = "running";
     this.state.error = null;
     this.state.result = null;
@@ -363,6 +375,8 @@ export class Execution {
       if (
         error instanceof ToolError &&
         [
+          "POLICY_DENIED",
+          "RISKY_ACTION",
           "FOCUS_FAILED",
           "HIDDEN_ELEMENT",
           "DISABLED_ELEMENT",

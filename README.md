@@ -64,3 +64,9 @@ npm run test:all
 GitHub Actions runs the build and fixture tests on Linux and macOS for pull requests and feature-branch pushes. No API key is needed. Tests cover browser isolation, targeting, private capture, handoff/cancellation, recording, two-input validation, zero-model execution, explicit repair, context/restart handling, workspace UI, and office behavior. Linux tests run under Xvfb. Failure screenshots are uploaded as CI artifacts.
 
 `npm run test:tools` and `npm run test:ui` run smaller suites. The optional `AWL_LIVE_TEST=1 node scripts/agent-live-check.mjs` uses the configured key and incurs API usage; build first.
+
+### Browser policy
+
+Set `AWL_POLICY_FILE` in `.env` to a reviewed JSON policy (see `policy.example.json`) and restart awl. Without a policy, automation has no permitted websites. Human browsing remains available. Origins are exact; paths are exact or end in `/*` for a subtree. Include legitimate authentication destinations and frame routes explicitly. Policy checks apply to discovery, validation, execution, and repair; the model cannot edit the policy.
+
+Declare allowed action types and narrowly scoped `safeControls` for activating buttons or Enter submissions. Ordinary links must remain within allowed destinations. `blockedControls` and recognized consequential controls (posting, transfers, payments, deletion, authorization) require direct human operation even when a broad safe-control rule would match. Take over for the particular action, verify its result, then resume. The text classifier is conservative and incomplete: explicitly block application-specific risky controls. Do not allow an entire form or all buttons without reviewing their effects. The browser still runs the application's JavaScript; control policy is not a sandbox for arbitrary side effects inside a permitted application.

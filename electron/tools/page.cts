@@ -1,3 +1,4 @@
+import { policyFor } from "../policy.cjs";
 import type { WebContents } from "electron";
 import { ToolError, toolSignal } from "./core.cjs";
 export const automationInput = new WeakSet<WebContents>();
@@ -75,6 +76,7 @@ export async function observable(wc: WebContents) {
       "This page has too many frames to inspect safely.",
     );
   for (const frame of list) {
+    policyFor(wc)?.assertDestination(frame.url);
     const sensitive = await inPage(wc, frame.id, pageIsSensitive, null);
     if (sensitive)
       throw new ToolError(

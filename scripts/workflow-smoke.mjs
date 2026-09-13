@@ -71,7 +71,10 @@ await writeFile(
   join(directory, "capabilities/fixture/search/v1.json"),
   JSON.stringify(contract),
 );
+const policyFile = join(directory, "policy.json");
+await writeFile(policyFile, JSON.stringify({ destinations: [{ origin: base, paths: ["/*"] }], actions: ["navigate", "click", "fill", "select", "press", "scroll"], safeControls: [{ origin: base, path: "/*", selector: "button", actions: ["click", "press"] }], blockedControls: [] }));
 const env = {
+  AWL_POLICY_FILE: policyFile,
   ...process.env,
   AWL_AI_DISABLED: "1",
   AWL_TEST_USER_DATA: directory,

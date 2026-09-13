@@ -10,3 +10,16 @@ const bound = bindTarget({ kind: "css", value: 'input[value="{{id}}"]', role: nu
 assert.ok(!bound.value.includes('], body'));
 assert.ok(bound.value.startsWith('input[value="\\22 '));
 console.log("Capability binding checks passed");
+
+const { BrowserPolicy } = require("../dist-electron/electron/policy.cjs");
+const policy = new BrowserPolicy({ destinations: [{ origin: "https://example.com", paths: ["/work/*"] }], actions: ["navigate", "click"], safeControls: [], blockedControls: [] });
+assert.ok(policy.destination("https://example.com/work/inquiry"));
+assert.ok(!policy.destination("https://example.com/workaround"));
+assert.ok(!policy.destination("https://example.com.evil.test/work/inquiry"));
+assert.ok(!policy.destination("https://user:secret@example.com/work/inquiry"));
+assert.throws(() => policy.assertType("fill"));
+const facts = { url: "https://example.com/work/inquiry", tag: "BUTTON", type: "submit", text: "Search", href: null, allowed: false, blocked: false };
+assert.throws(() => policy.assertAction("click", null, facts), /not declared safe/);
+policy.assertAction("click", null, { ...facts, allowed: true });
+assert.throws(() => policy.assertAction("click", null, { ...facts, allowed: true, text: "POST SHARE + TRANSFER" }), /human operation/);
+assert.throws(() => policy.assertAction("click", null, { ...facts, href: "https://elsewhere.test/" }), /outside/);

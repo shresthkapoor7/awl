@@ -12,13 +12,20 @@ app.whenReady().then(async () => {
       preload: join(__dirname, "../electron/preload.cjs"),
     },
   });
-  const browser = installBrowser(window);
+  const { BrowserPolicy } = require("../dist-electron/electron/policy.cjs");
+  const policy = new BrowserPolicy({ destinations: [], actions: ["navigate", "click", "fill", "select", "press", "scroll"], safeControls: [], blockedControls: [] });
+  const browser = installBrowser(window, policy);
   const present = (id) =>
     window.webContents.executeJavaScript(
       `window.awlBrowser.present(${JSON.stringify(id)}, "tool-fixture", {x:0,y:0,width:1000,height:700})`,
     );
   const start = browser.start.bind(browser);
   browser.start = async (...args) => {
+    const url = new URL(args[1]);
+    if (url.protocol === "http:" && url.hostname === "127.0.0.1") {
+      policy.config.destinations.push({ origin: url.origin, paths: ["/*"] });
+      policy.config.safeControls.push({ origin: url.origin, path: "/*", selector: "*", actions: ["click", "press"] });
+    }
     const state = await start(...args);
     await present(args[0]);
     return state;

@@ -11,6 +11,7 @@ import {
   type WebContents,
   type WebPreferences,
 } from "electron";
+import { attachPolicy, loadPolicy, type BrowserPolicy } from "./policy.cjs";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { automationInput } from "./tools/page.cjs";
 import { randomUUID } from "node:crypto";
@@ -72,7 +73,7 @@ function normalizeURL(value: unknown): string {
   return new URL(url).href;
 }
 
-export function installBrowser(window: BrowserWindow): BrowserAccess {
+export function installBrowser(window: BrowserWindow, policy: BrowserPolicy = loadPolicy()): BrowserAccess {
   const owners = new Map<string, "human" | "agent">();
   let humanInput: ((id: string) => void) | undefined;
   const interruptHumanInput = (id: string) => {
@@ -494,6 +495,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
+    attachPolicy(wc, policy);
     wc.on("before-input-event", (event, input) => {
       if (
         input.key === "Escape" &&
@@ -529,6 +531,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     });
     wc.setWindowOpenHandler((details) => {
       if (
+        (owners.get(browser.id) === "agent" && !policy.destination(details.url)) ||
         (!webURL(details.url) && details.url !== "about:blank") ||
         browser.tabs.length >= 12
       ) {
@@ -557,9 +560,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       event: Electron.Event & { url: string; isMainFrame: boolean },
     ) => {
       if (
-        event.isMainFrame &&
-        !webURL(event.url) &&
-        event.url !== "about:blank"
+        (owners.get(browser.id) === "agent" && !policy.destination(event.url)) ||
+        (event.isMainFrame && !webURL(event.url) && event.url !== "about:blank")
       ) {
         event.preventDefault();
         browser.notice =
@@ -627,6 +629,12 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       callback(false),
     );
     isolated.setPermissionCheckHandler(() => false);
+    // Block frame requests before network effects, including form posts and redirects.
+    isolated.webRequest.onBeforeRequest((details, callback) => {
+      const frameRequest = ["mainFrame", "subFrame"].includes(details.resourceType);
+      const blocked = owners.get(id) === "agent" && frameRequest && !policy.destination(details.url);
+      callback({ cancel: blocked });
+    });
     const browser: AgentBrowser = {
       id,
       session: isolated,
@@ -860,6 +868,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
         );
       }
       signal.throwIfAborted();
+      policy.assertType("navigate");
+      policy.assertDestination(url);
       const browser = getBrowser(agentId);
       const tab = tabId
         ? target(agentId, tabId)

@@ -340,7 +340,7 @@ export class AgentRuntime {
         throw new Error("The request changed.");
       const execution = this.executions.get(id);
       if (execution) {
-        if (execution.state.uncertain && answer !== "Step completed")
+        if ((execution.state.uncertain || (execution.state.result?.kind === "failure" && execution.state.result.code === "RISKY_ACTION")) && answer !== "Step completed")
           throw new Error("Confirm the uncertain action first.");
         session.chat.pending = null;
         session.chat.status = "running";
@@ -596,7 +596,7 @@ export class AgentRuntime {
               ? "authentication"
               : "unexpected_state",
           question: `Step ${execution.state.step + 1} paused. ${execution.state.error}${execution.state.uncertain ? " An action may have happened. Confirm it completed before advancing; otherwise use Repair." : " Check the page, then Resume to retry this step or enter Repair."}`,
-          choices: execution.state.uncertain ? ["Step completed"] : [],
+          choices: execution.state.uncertain || (execution.state.result?.kind === "failure" && execution.state.result.code === "RISKY_ACTION") ? ["Step completed"] : [],
           expected_text: null,
         });
     } catch {
@@ -996,16 +996,16 @@ export class AgentRuntime {
             });
           if (session.chat.pending || session.chat.status === "completed")
             return;
-          if (!result.ok && result.error.code === "SENSITIVE_PAGE") {
+          if (!result.ok && ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION"].includes(result.error.code)) {
             session.chat.messages.push({
               id: randomUUID(),
               role: "assistant",
-              text: "Complete authentication or payment details directly in the browser, then select Resume to continue.",
+              text: result.error.message,
             });
             this.question(session, {
-              reason: "authentication",
+              reason: result.error.code === "SENSITIVE_PAGE" ? "authentication" : "unexpected_state",
               question:
-                "Complete authentication or payment details directly in the browser, then Resume.",
+                result.error.message,
               choices: [],
               expected_text: null,
             });
