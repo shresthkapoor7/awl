@@ -7,12 +7,12 @@ import {
   Play,
   type LucideIcon,
 } from "lucide-react";
-import type { Phase } from "../../demo";
+import type { Phase } from "../../agents";
 
 const statuses: Record<Phase, { label: string; icon: LucideIcon }> = {
   waiting: { label: "Needs you", icon: Hand },
   human: { label: "You’re in control", icon: MousePointer2 },
-  ready: { label: "Ready to replay", icon: Play },
+  ready: { label: "Ready", icon: Play },
   replaying: { label: "Working", icon: LoaderCircle },
   finished: { label: "Completed", icon: Check },
   new: { label: "Not started", icon: CircleDashed },

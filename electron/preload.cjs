@@ -1,5 +1,18 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+contextBridge.exposeInMainWorld("awlAgent", {
+  state: () => ipcRenderer.invoke("agent:state"),
+  create: (id) => ipcRenderer.invoke("agent:create", id),
+  capabilities: () => ipcRenderer.invoke("agent:capabilities"),
+  send: (id, text) => ipcRenderer.invoke("agent:send", { id, text }),
+  stop: (id) => ipcRenderer.invoke("agent:stop", id),
+  subscribe: (listener) => {
+    const handle = (_event, chat) => listener(chat);
+    ipcRenderer.on("agent:update", handle);
+    return () => ipcRenderer.removeListener("agent:update", handle);
+  },
+});
+
 // Only the app shell receives this preload. No generic IPC or script execution.
 contextBridge.exposeInMainWorld("awlBrowser", {
   command: (command) => ipcRenderer.invoke("browser:command", command),
@@ -20,5 +33,13 @@ contextBridge.exposeInMainWorld("awlBrowser", {
     const handle = (_event, state) => listener(state);
     ipcRenderer.on("browser:state", handle);
     return () => ipcRenderer.removeListener("browser:state", handle);
+  },
+});
+
+contextBridge.exposeInMainWorld("awlWorkspace", {
+  onTogglePanel: (listener) => {
+    const handle = (_event, side) => listener(side);
+    ipcRenderer.on("workspace:toggle-panel", handle);
+    return () => ipcRenderer.removeListener("workspace:toggle-panel", handle);
   },
 });

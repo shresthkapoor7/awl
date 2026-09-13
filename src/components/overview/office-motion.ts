@@ -1,4 +1,4 @@
-import type { Phase } from "../../demo";
+import type { Phase } from "../../agents";
 
 type Point = [number, number];
 export type OfficePose = {

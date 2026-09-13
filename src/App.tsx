@@ -4,7 +4,6 @@ import {
   MessageSquare,
   ChevronRight,
   Command,
-  FileText,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -22,28 +21,29 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import {
-  initialAgents,
-  phaseLabel,
-  type Agent,
-  type CapabilityRun,
-} from "./demo";
+import { blankAgent, fromChat, phaseLabel, type Agent } from "./agents";
 import { Capabilities } from "./components/Capabilities";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
 import { IconButton, Mark, StatusDot } from "./components/ui";
+import type { AgentChat } from "../shared/agent";
 
 const Overview = lazy(() => import("./components/overview/Overview"));
 const workspaceViews = ["chat", "overview", "capabilities"] as const;
 
 export function App() {
+  const isMac = /Mac/.test(navigator.platform);
   const [view, setView] = useState<(typeof workspaceViews)[number]>("chat");
-  const [agents, setAgents] = useState<Agent[]>(() =>
-    structuredClone(initialAgents),
+  const [ready, setReady] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [fallback] = useState(blankAgent);
+  const [model, setModel] = useState("gpt-5.6-terra");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    sessionStorage.getItem("awl-selected-chat"),
   );
-  const [selectedId, setSelectedId] = useState("onboarding");
-  const [tab, setTab] = useState<"browser" | "capability">("browser");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -65,126 +65,123 @@ export function App() {
   }, []);
   const [mobileView, setMobileView] = useState<"chat" | "browser">("chat");
   const searchInput = useRef<HTMLInputElement>(null);
-  const agent = agents.find((item) => item.id === selectedId)!;
+  const agent =
+    agents.find((item) => item.id === selectedId) ?? agents[0] ?? fallback;
+  useEffect(() => {
+    if (selectedId) sessionStorage.setItem("awl-selected-chat", selectedId);
+  }, [selectedId]);
 
-  function updateAgent(patch: Partial<Agent>, id = selectedId) {
-    setAgents((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
-  }
-  function newAgent() {
-    setView("chat");
-    const id = crypto.randomUUID();
-    setAgents((current) => [
-      ...current,
-      {
-        id,
-        name: "New agent",
-        description: "Waiting for a goal",
-        kind: "onboarding",
-        phase: "new",
-        verified: false,
-        messages: [],
-      },
-    ]);
-    setSelectedId(id);
-    setSearch("");
-    setTab("browser");
-    setMobileView("chat");
-  }
+  useEffect(() => {
+    const bridge = window.awlAgent;
+    if (!bridge) {
+      setAgents([fallback]);
+      setSelectedId(fallback.id);
+      setReady(true);
+      return;
+    }
+    let active = true;
+    const received = new Set<string>();
+    function receive(chat: AgentChat) {
+      received.add(chat.id);
+      if (!active) return;
+      setAgents((current) =>
+        current.some((item) => item.id === chat.id)
+          ? current.map((item) => (item.id === chat.id ? fromChat(chat) : item))
+          : [...current, fromChat(chat)],
+      );
+    }
+    const unsubscribe = bridge.subscribe(receive);
+    void bridge
+      .state()
+      .then(async (state) => {
+        if (!active) return;
+        setModel(state.model);
+        state.chats.filter((chat) => !received.has(chat.id)).forEach(receive);
+        if (!state.chats.length && !received.size) {
+          const result = await bridge.create(fallback.id);
+          if (!active) return;
+          if (result.chat) receive(result.chat);
+          else setStartupError(result.error ?? "Could not create a chat.");
+        }
+        setSelectedId((current) =>
+          state.chats.some((chat) => chat.id === current)
+            ? current
+            : (state.chats[0]?.id ?? fallback.id),
+        );
+        setReady(true);
+      })
+      .catch(() => {
+        if (active) {
+          setStartupError("Could not load the workspace.");
+          setReady(true);
+        }
+      });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [fallback]);
   function selectAgent(id: string) {
     setView("chat");
     setMobileView("chat");
-    if (id !== selectedId) {
-      setSelectedId(id);
-      setTab("browser");
-    }
-  }
-  function runCapability(run: CapabilityRun) {
-    const id = crypto.randomUUID();
-    setAgents((current) => [
-      ...current,
-      {
-        id,
-        name: `${run.capability.name} · ${run.inputs.member_id}`,
-        description: `Capability run · v${run.capability.version} · demo`,
-        kind: run.capability.kind,
-        phase: "replaying",
-        verified: false,
-        messages: [],
-        capabilityRun: run,
-      },
-    ]);
     setSelectedId(id);
+  }
+  async function newAgent() {
+    setCreateError(null);
+    const next = blankAgent();
+    if (window.awlAgent) {
+      const result: { chat?: AgentChat; error?: string } = await window.awlAgent
+        .create(next.id)
+        .catch(() => ({ error: "Could not create a chat." }));
+      if (!result.chat) {
+        setCreateError(result.error ?? "Could not create a chat.");
+        return;
+      }
+      setAgents((current) => [...current, fromChat(result.chat!)]);
+    } else setAgents((current) => [...current, next]);
+    setStartupError(null);
     setSearch("");
-    setView("chat");
-    setTab("browser");
-    setMobileView("chat");
-    setBrowserOpen(true);
+    selectAgent(next.id);
   }
-  function takeControl() {
-    updateAgent({ phase: "human" });
-    setTab("browser");
-    setMobileView("browser");
-    setBrowserOpen(true);
-  }
-  function resume() {
-    if (agent.phase === "human") updateAgent({ phase: "ready" });
-  }
-  function replay() {
-    if (["ready", "finished"].includes(agent.phase)) {
-      updateAgent({ phase: "replaying" });
-    }
-  }
-  function send(text: string) {
-    if (agent.phase === "new") {
-      updateAgent({
-        name: text.length > 30 ? `${text.slice(0, 29)}…` : text,
-        description: "Onboarding demo session",
-        phase: "waiting",
-        messages: [
-          { id: crypto.randomUUID(), role: "user", text },
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            text: "Sample workflow loaded. Take control to try the handoff.",
-          },
-        ],
-      });
-    } else {
-      updateAgent({
-        messages: [
-          ...agent.messages,
-          { id: crypto.randomUUID(), role: "user", text },
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            text: "Noted for this demo. Live responses aren’t connected yet.",
-          },
-        ],
-      });
-    }
-  }
-  useEffect(() => {
-    const running = agents.filter((item) => item.phase === "replaying");
-    if (!running.length) return;
-    const timer = window.setTimeout(() => {
+  async function send(text: string): Promise<boolean> {
+    const id = agent.id;
+    const result = window.awlAgent
+      ? await window.awlAgent
+          .send(id, text)
+          .catch(() => ({ error: "Could not reach the local agent." }))
+      : { error: "Open awl in Electron to use the agent." };
+    if (result.error) {
       setAgents((current) =>
         current.map((item) =>
-          running.some((run) => run.id === item.id) &&
-          item.phase === "replaying"
-            ? { ...item, phase: "finished" }
+          item.id === id
+            ? { ...item, live: { ...item.live, error: result.error! } }
             : item,
         ),
       );
-    }, 1600);
-    return () => window.clearTimeout(timer);
-  }, [agents]);
+      return false;
+    }
+    return true;
+  }
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
   useEffect(() => {
+    function togglePanel(side: "left" | "right") {
+      if (side === "left") setSidebarOpen((open) => !open);
+      else setBrowserOpen((open) => !open);
+    }
+    const unsubscribe = window.awlWorkspace?.onTogglePanel(togglePanel);
     function shortcut(event: KeyboardEvent) {
+      if (
+        !window.awlWorkspace &&
+        (isMac ? event.metaKey : event.ctrlKey) &&
+        !event.shiftKey &&
+        (event.code === "KeyB" || event.key.toLowerCase() === "b")
+      ) {
+        event.preventDefault();
+        if (!event.repeat) togglePanel(event.altKey ? "right" : "left");
+        return;
+      }
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         setSidebarOpen(true);
@@ -197,8 +194,11 @@ export function App() {
       }
     }
     window.addEventListener("keydown", shortcut);
-    return () => window.removeEventListener("keydown", shortcut);
-  }, []);
+    return () => {
+      window.removeEventListener("keydown", shortcut);
+      unsubscribe?.();
+    };
+  }, [isMac]);
 
   return (
     <div
@@ -215,6 +215,8 @@ export function App() {
           <span className="window-clearance" />
           <IconButton
             label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            title={`${sidebarOpen ? "Hide sidebar" : "Show sidebar"} (${isMac ? "⌘B" : "Ctrl+B"})`}
+            aria-keyshortcuts={isMac ? "Meta+B" : "Control+B"}
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
             {sidebarOpen ? (
@@ -296,6 +298,8 @@ export function App() {
         <IconButton
           style={{ visibility: view !== "chat" ? "hidden" : "visible" }}
           label={browserOpen ? "Hide browser" : "Show browser"}
+          title={`${browserOpen ? "Hide browser" : "Show browser"} (${isMac ? "⌘⌥B" : "Ctrl+Alt+B"})`}
+          aria-keyshortcuts={isMac ? "Meta+Alt+B" : "Control+Alt+B"}
           onClick={() => {
             setBrowserOpen(!browserOpen);
             setMobileView(browserOpen ? "chat" : "browser");
@@ -318,10 +322,19 @@ export function App() {
               </span>
             </div>
           </div>
-          <button className="new-agent" onClick={newAgent}>
+          <button
+            className="new-agent"
+            onClick={() => void newAgent()}
+            disabled={!ready}
+          >
             <Plus size={17} />
             <span>New agent</span>
           </button>
+          {createError && (
+            <p className="create-agent-error" role="alert">
+              {createError}
+            </p>
+          )}
           <button
             className="search-trigger"
             onClick={() => setSearchOpen(!searchOpen)}
@@ -349,9 +362,7 @@ export function App() {
           <nav className="agent-list" aria-label="Agents">
             {agents
               .filter((item) =>
-                `${item.name} ${item.description}`
-                  .toLowerCase()
-                  .includes(search.toLowerCase()),
+                item.name.toLowerCase().includes(search.toLowerCase()),
               )
               .map((item) => (
                 <button
@@ -361,11 +372,7 @@ export function App() {
                   onClick={() => selectAgent(item.id)}
                 >
                   <span className="agent-glyph">
-                    {item.kind === "statement" ? (
-                      <FileText size={16} />
-                    ) : (
-                      <Workflow size={17} />
-                    )}
+                    <Workflow size={17} />
                   </span>
                   <span className="agent-copy">
                     <strong>{item.name}</strong>
@@ -377,7 +384,9 @@ export function App() {
                           item.phase === "replaying"
                         }
                       />
-                      {phaseLabel(item.phase)}
+                      {item.live && item.phase === "replaying"
+                        ? "Working"
+                        : phaseLabel(item.phase)}
                     </span>
                   </span>
                   {item.phase === "finished" && (
@@ -386,9 +395,7 @@ export function App() {
                 </button>
               ))}
             {!agents.some((item) =>
-              `${item.name} ${item.description}`
-                .toLowerCase()
-                .includes(search.toLowerCase()),
+              item.name.toLowerCase().includes(search.toLowerCase()),
             ) && <p className="no-results">No sessions found.</p>}
           </nav>
           <div className="sidebar-bottom">
@@ -433,21 +440,32 @@ export function App() {
               setBrowserOpen(true);
             }}
           >
-            Browser & capability
+            Browser
           </button>
         </div>
         <Conversation
           key={`conversation-${agent.id}`}
           agent={agent}
           onSend={send}
-          onTakeControl={takeControl}
-          onResume={resume}
-          onCapability={() => {
-            setTab("capability");
-            setMobileView("browser");
+          onOpenLink={async (url) => {
             setBrowserOpen(true);
+            setMobileView("browser");
+            if (!window.awlBrowser)
+              throw new Error("Open awl in Electron to browse links.");
+            const result = await window.awlBrowser.command({
+              action: "navigate",
+              agentId: agent.id,
+              url,
+            });
+            if (result.error) throw new Error(result.error);
           }}
-          onReplay={replay}
+          enabled={ready && !startupError}
+          startupError={startupError}
+          model={model}
+          onStop={async () => {
+            if (!window.awlAgent) throw new Error("Agent unavailable");
+            await window.awlAgent.stop(agent.id);
+          }}
         />
         <div className="browser-dock" hidden={!browserOpen}>
           <ResizeHandle
@@ -458,18 +476,17 @@ export function App() {
             onChange={setBrowserWidth}
             reversed
           />
-          <BrowserPanel
-            key={`browser-${agent.id}`}
-            agent={agent}
-            tab={tab}
-            setTab={setTab}
-            visible={
-              view === "chat" &&
-              browserOpen &&
-              (windowWidth > 980 || mobileView === "browser")
-            }
-            onReplay={replay}
-          />
+          {ready && (
+            <BrowserPanel
+              key={`browser-${agent.id}`}
+              agent={agent}
+              visible={
+                view === "chat" &&
+                browserOpen &&
+                (windowWidth > 980 || mobileView === "browser")
+              }
+            />
+          )}
         </div>
       </main>
       {view === "overview" && (
@@ -491,7 +508,7 @@ export function App() {
           />
         </Suspense>
       )}
-      {view === "capabilities" && <Capabilities onRun={runCapability} />}
+      {view === "capabilities" && <Capabilities />}
     </div>
   );
 }

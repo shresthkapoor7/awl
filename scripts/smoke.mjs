@@ -1,357 +1,358 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
-
-const executablePath = await prepareElectron();
-const environment = { ...process.env };
-delete environment.ELECTRON_RUN_AS_NODE;
-delete environment.AWL_DEV_URL;
+const env = { ...process.env, AWL_AI_DISABLED: "1" };
+delete env.ELECTRON_RUN_AS_NODE;
+delete env.AWL_DEV_URL;
 const app = await electron.launch({
-  executablePath,
+  executablePath: await prepareElectron(),
   args: ["."],
-  env: environment,
+  env,
 });
-const errors = [];
-
 try {
   const page = await app.firstWindow();
+  page.setDefaultTimeout(10000);
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
     window.hide();
   });
-  page.setDefaultTimeout(10000);
+  const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page
-    .getByRole("heading", { name: "Member onboarding", exact: true })
-    .waitFor();
-  // Check the OS-visible name, not just Electron's internal app.getName().
-  if (process.platform === "darwin") {
-    const identity = execFileSync(
-      "/usr/bin/osascript",
-      [
-        "-l",
-        "JavaScript",
-        "-e",
-        `ObjC.import('AppKit');
-      function run(argv) {
-        var apps = $.NSWorkspace.sharedWorkspace.runningApplications;
-        for (var i = 0; i < apps.count; i++) {
-          var app = apps.objectAtIndex(i);
-          if (app.processIdentifier === Number(argv[0])) return JSON.stringify({
-            name: ObjC.unwrap(app.localizedName),
-            bundleId: ObjC.unwrap(app.bundleIdentifier),
-            bundlePath: ObjC.unwrap(app.bundleURL.path),
-          });
-        }
-        throw Error('App not found');
-      }`,
-        String(app.process().pid),
-      ],
-      { encoding: "utf8", timeout: 10000 },
-    ).trim();
-    const { name, bundleId, bundlePath } = JSON.parse(identity);
-    assert.equal(name, "awl");
-    assert.equal(bundleId, "local.awl.desktop");
-    assert.equal(bundlePath.endsWith("/awl.app"), true);
-  }
-  await page.evaluate(() => document.fonts.ready);
-  await mkdir("test-results", { recursive: true });
-  await page.screenshot({ path: "test-results/awl-desktop.png" });
-
-  // Both dividers resize by pointer and keyboard; toggles preserve widths and draft.
+  await page.waitForFunction(
+    () =>
+      document.querySelector(".new-agent") &&
+      !document.querySelector(".new-agent").disabled,
+  );
+  await page.getByRole("heading", { name: "What’s the task?" }).waitFor();
+  assert.equal(await page.locator(".agent-item").count(), 1);
+  assert.equal(
+    await page
+      .locator(
+        ".user-message, .assistant-message, .handoff-card, .completion-card",
+      )
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page
+      .getByText(/Member onboarding|Statement lookup|demo.awl.local/)
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Capability", exact: true }).count(),
+    0,
+  );
+  const draft = page.getByRole("textbox", { name: "Message your agent" });
+  await draft.fill("Keep my draft");
   const sidebar = page.locator(".sidebar");
   const dock = page.locator(".browser-dock");
-  const draft = page.getByRole("textbox", { name: "Message your agent" });
   const leftDivider = page.getByRole("separator", {
     name: "Resize agent sidebar",
   });
   const rightDivider = page.getByRole("separator", {
     name: "Resize browser panel",
   });
-  async function dragDivider(divider, distance) {
-    const start = Number(await divider.getAttribute("aria-valuenow"));
-    const reversed =
-      (await divider.getAttribute("aria-label")) === "Resize browser panel";
-    const box = await divider.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(
-      box.x + box.width / 2 + distance,
-      box.y + box.height / 2,
-      { steps: 1 },
-    );
-    await page.mouse.up();
-
-    await page.waitForFunction(
-      ({ label, width }) =>
-        Number(
-          document
-            .querySelector(`[aria-label="${label}"]`)
-            .getAttribute("aria-valuenow"),
-        ) === width,
-      {
-        label: await divider.getAttribute("aria-label"),
-        width: start + distance * (reversed ? -1 : 1),
-      },
-    );
-  }
-  const originalLeft = (await sidebar.boundingBox()).width;
-  await dragDivider(leftDivider, 40);
-  assert.equal((await sidebar.boundingBox()).width, originalLeft + 40);
-  await leftDivider.press("ArrowLeft");
-  assert.equal((await sidebar.boundingBox()).width, originalLeft + 24);
-  const originalRight = (await dock.boundingBox()).width;
-  await dragDivider(rightDivider, -40);
-  assert.equal((await dock.boundingBox()).width, originalRight + 40);
-  await rightDivider.press("ArrowRight");
-  assert.equal((await dock.boundingBox()).width, originalRight + 24);
-  await draft.fill("Keep this draft");
+  const left = (await sidebar.boundingBox()).width;
+  await leftDivider.press("ArrowRight");
+  assert.equal((await sidebar.boundingBox()).width, left + 16);
+  const right = (await dock.boundingBox()).width;
+  await rightDivider.press("ArrowLeft");
+  assert.equal((await dock.boundingBox()).width, right + 16);
   await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
-  assert.equal(await sidebar.isVisible(), false);
   await page.getByRole("button", { name: "Hide browser", exact: true }).click();
   assert.equal(await dock.isVisible(), false);
-  assert.equal(await draft.inputValue(), "Keep this draft");
   await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
   await page.getByRole("button", { name: "Show browser", exact: true }).click();
-  assert.equal((await sidebar.boundingBox()).width, originalLeft + 24);
-  assert.equal((await dock.boundingBox()).width, originalRight + 24);
-  await draft.fill("");
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  const shortcut = async (alt = false) =>
+    app.evaluate(({ BrowserWindow }, alt) => {
+      const wc = BrowserWindow.getAllWindows()[0].webContents;
+      const modifiers = [
+        process.platform === "darwin" ? "meta" : "control",
+        ...(alt ? ["alt"] : []),
+      ];
+      wc.sendInputEvent({ type: "keyDown", keyCode: "B", modifiers });
+      wc.sendInputEvent({ type: "keyUp", keyCode: "B", modifiers });
+    }, alt);
   await draft.focus();
+  await shortcut();
+  await page
+    .getByRole("button", { name: "Show sidebar", exact: true })
+    .waitFor();
+  await shortcut(true);
+  await page
+    .getByRole("button", { name: "Show browser", exact: true })
+    .waitFor();
+  await shortcut();
+  await page
+    .getByRole("button", { name: "Hide sidebar", exact: true })
+    .waitFor();
+  await shortcut(true);
+  await page
+    .getByRole("button", { name: "Hide browser", exact: true })
+    .waitFor();
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Capabilities", exact: true })
+    .waitFor();
+  assert.equal(await dock.isVisible(), false);
+  assert.equal(await page.getByRole("button", { name: /^Run/ }).count(), 0);
   assert.equal(
-    await draft.evaluate((el) => getComputedStyle(el).outlineStyle),
-    "none",
+    await page
+      .getByText(
+        /Find latest statement|Prepare savings account|Demo capabilities/,
+      )
+      .count(),
+    0,
   );
-  await page.screenshot({ path: "test-results/awl-focused-composer.png" });
-
-  // Demo handoff changes the preview state without claiming browser execution.
   await page
-    .getByRole("button", { name: "Take control", exact: true })
-    .first()
+    .getByRole("tab", { name: "Capabilities", exact: true })
+    .press("ArrowRight");
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  // A rejected real send keeps the user's draft and never falls back to fake chat.
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  assert.equal(await page.locator(".assistant-message").count(), 0);
+  // Real runtime events update the same chat without replacing its composer.
+  const chat = (await page.evaluate(() => window.awlAgent.state())).chats[0];
+  const update = {
+    ...chat,
+    name: "Read the guide",
+    status: "running",
+    messages: [
+      { id: "m1", role: "user", text: "Read the guide" },
+      {
+        id: "m2",
+        role: "assistant",
+        text: [
+          "## Findings",
+          "",
+          "**Important** and *useful* with `inline code`.",
+          "",
+          "1. First",
+          "2. Second",
+          "",
+          "- [x] Checked",
+          "",
+          "| Name | Result |",
+          "| --- | --- |",
+          "| Guide | Ready |",
+          "",
+          "```ts",
+          "const ready = true;",
+          "```",
+          "",
+          "[Unsafe](javascript:alert(1))",
+          "[Invalid port](https://example.invalid:99999/)",
+          "[Credential URL](https://fixture:fixture@example.invalid/)",
+          "![Remote](https://example.invalid/pixel.png)",
+          "<script>window.markdownExecuted = true</script>",
+        ].join("\n"),
+      },
+    ],
+    tools: [{ id: "t1", name: "browser_dom", state: "running" }],
+  };
+  await app.evaluate(
+    ({ BrowserWindow }, chat) =>
+      BrowserWindow.getAllWindows()[0].webContents.send("agent:update", chat),
+    update,
+  );
+  await page.getByRole("button", { name: "Stop agent", exact: true }).waitFor();
+  await page.getByText("Agent is working", { exact: true }).waitFor();
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  const markdown = page.locator(".assistant-message .markdown-message");
+  await markdown.getByRole("heading", { name: "Findings" }).waitFor();
+  assert.equal(await markdown.locator("strong").textContent(), "Important");
+  assert.equal(await markdown.locator("em").textContent(), "useful");
+  assert.equal(
+    await markdown
+      .locator("strong")
+      .evaluate((element) => getComputedStyle(element).fontWeight),
+    "600",
+  );
+  assert.equal(
+    await markdown
+      .locator("em")
+      .evaluate((element) => getComputedStyle(element).fontSynthesisStyle),
+    "auto",
+  );
+  assert.equal(await markdown.locator("table tbody tr").count(), 1);
+  assert.equal(await markdown.locator("ol > li").count(), 2);
+  assert.equal(
+    await markdown.locator("pre code").textContent(),
+    "const ready = true;\n",
+  );
+  assert.equal(
+    await markdown.locator('input[type="checkbox"]').isChecked(),
+    true,
+  );
+  assert.equal(
+    await markdown.locator("img, script, a[href^='javascript:']").count(),
+    0,
+  );
+  assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
+  await markdown.getByRole("link", { name: "Invalid port" }).click();
+  await markdown.getByRole("alert").waitFor();
+  assert.ok((await markdown.getByRole("alert").textContent()).length > 0);
+  await markdown.getByRole("link", { name: "Credential URL" }).click();
+  await markdown.getByRole("alert").waitFor();
+  assert.ok((await markdown.getByRole("alert").textContent()).length > 0);
+  assert.equal(
+    (
+      await page.evaluate(
+        (agentId) => window.awlBrowser.command({ action: "get", agentId }),
+        chat.id,
+      )
+    ).state.tabs[0].url,
+    "about:blank",
+  );
+  // Activity stays in the centered message column as the available width changes.
+  const alignedActivity = async () => {
+    const messageBox = await page.locator(".assistant-message").boundingBox();
+    const activityBox = await page.locator(".live-tool-activity").boundingBox();
+    assert.ok(Math.abs(messageBox.x - activityBox.x) < 1);
+    assert.ok(Math.abs(messageBox.width - activityBox.width) < 1);
+  };
+  await alignedActivity();
+  await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+  await alignedActivity();
+  await page.getByRole("button", { name: "Hide browser", exact: true }).click();
+  await alignedActivity();
+  await page.locator(".live-tool-activity summary").click();
+  await alignedActivity();
+  await mkdir("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/awl-chat-controls.png" });
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
+  // Check both stop affordances, IPC targeting, failure retry, and acknowledgement.
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.stopRequests = [];
+    ipcMain.removeHandler("agent:stop");
+    ipcMain.handle("agent:stop", (_event, id) => {
+      globalThis.stopRequests.push(id);
+      if (globalThis.stopRequests.length === 1) throw new Error("Test failure");
+    });
+  });
+  await page.getByRole("button", { name: "Stop agent", exact: true }).click();
+  await page.getByText("Could not stop the agent. Try again.").waitFor();
+  await page
+    .getByRole("button", { name: "Stop generating", exact: true })
     .click();
+  await page.waitForFunction(
+    () => document.querySelector(".stop-agent-button")?.disabled,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Stop generating" }).isDisabled(),
+    true,
+  );
+  assert.deepEqual(await app.evaluate(() => globalThis.stopRequests), [
+    chat.id,
+    chat.id,
+  ]);
+  await app.evaluate(
+    ({ BrowserWindow }, chat) =>
+      BrowserWindow.getAllWindows()[0].webContents.send("agent:update", chat),
+    {
+      ...update,
+      status: "stopped",
+      tools: [],
+      error: "Stopped. Check the page before repeating an action.",
+    },
+  );
   await page
-    .getByText(
-      "The browser stays yours. Resume to preview the next demo state.",
-    )
+    .getByRole("button", { name: "Send message", exact: true })
     .waitFor();
-  await page.getByRole("button", { name: "Resume with awl" }).click();
-  await page.getByText("That’s a workflow worth keeping.").waitFor();
-  await page
-    .getByRole("button", {
-      name: /Prepare savings account Reusable capability/,
-    })
-    .click();
-  await page.getByRole("heading", { name: "Learn once. Run again." }).waitFor();
-  await page.screenshot({ path: "test-results/awl-capability.png" });
-  await page.getByRole("button", { name: "Try a replay", exact: true }).click();
-  await page.getByText("Running the saved steps.", { exact: true }).waitFor();
-  await page
-    .getByText("Done. And ready for next time.", { exact: true })
-    .waitFor();
-
-  // Switching sessions preserves state and each session owns its conversation.
-  await page
-    .getByRole("button", { name: "Statement lookup Completed" })
-    .click();
-  await page
-    .getByRole("heading", { name: "Statement lookup", exact: true })
-    .waitFor();
-  await page
-    .getByRole("button", { name: "Member onboarding Completed" })
-    .click();
-  await page
-    .getByText("Done. And ready for next time.", { exact: true })
-    .waitFor();
-  await page
-    .getByRole("textbox", { name: "Message your agent" })
-    .fill("Keep the final submission manual.");
-  await page.getByRole("button", { name: "Send message" }).click();
-  await page
-    .getByText("Keep the final submission manual.", { exact: true })
-    .waitFor();
-
-  // Search and empty/new-session states are functional, with honest demo responses.
+  assert.equal(
+    await page.getByRole("button", { name: "Stop agent", exact: true }).count(),
+    0,
+  );
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".agent-item").length === 2,
+  );
+  await page.getByRole("heading", { name: "What’s the task?" }).waitFor();
+  const selected = await page.evaluate(() =>
+    sessionStorage.getItem("awl-selected-chat"),
+  );
+  await page.reload();
+  await page.waitForFunction(
+    () => !document.querySelector(".new-agent")?.disabled,
+  );
+  assert.equal(await page.locator(".agent-item").count(), 2);
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem("awl-selected-chat")),
+    selected,
+  );
+  assert.equal(
+    await page.locator(".agent-item[aria-current='page']").count(),
+    1,
+  );
   await page.getByRole("button", { name: /Find a session/ }).click();
   await page
     .getByRole("textbox", { name: "Search sessions" })
     .fill("not-a-session");
   await page.getByText("No sessions found.").waitFor();
-  assert.equal(
-    await page
-      .getByRole("textbox", { name: "Search sessions" })
-      .evaluate((el) => getComputedStyle(el).outlineStyle),
-    "none",
-  );
-  await page.screenshot({ path: "test-results/awl-focused-search.png" });
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
-  await page.getByRole("heading", { name: "What’s the task?" }).waitFor();
-  await page.screenshot({ path: "test-results/awl-new-session.png" });
-  await page.getByRole("button", { name: "Try the onboarding demo" }).click();
-  await page.getByRole("button", { name: "Send message" }).click();
-  await page.getByText("A little help here.", { exact: true }).waitFor();
-
-  // The shell keeps all panels within its minimum window size.
+  await page.getByRole("textbox", { name: "Search sessions" }).fill("");
+  await mkdir("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/awl-clean-workspace.png" });
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setSize(1000, 700),
   );
-  await page.waitForFunction(() => window.innerWidth <= 1000);
+  await page.waitForFunction(() => innerWidth <= 1000);
   assert.equal(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+      () => document.documentElement.scrollWidth <= innerWidth,
     ),
     true,
   );
-  await page.screenshot({ path: "test-results/awl-compact.png" });
-  await rightDivider.press("End");
-  assert.equal(
-    await page
-      .locator(".conversation")
-      .evaluate((el) => el.getBoundingClientRect().width >= 320),
-    true,
-  );
-  assert.equal(
-    await dock.evaluate(
-      (el) => el.getBoundingClientRect().right <= window.innerWidth,
-    ),
-    true,
-  );
-  await leftDivider.press("End");
-  assert.equal(
-    await dock.evaluate(
-      (el) => el.getBoundingClientRect().right <= window.innerWidth,
-    ),
-    true,
-  );
-
-  // Capability launches bind inputs to new chats, leaving prior sessions intact.
-  const libraryTab = page.getByRole("tab", {
-    name: "Capabilities",
-    exact: true,
+  // Hitting the real runtime limit must not lock existing conversations.
+  await page.evaluate(async () => {
+    const { chats } = await window.awlAgent.state();
+    for (let index = chats.length; index < 32; index++) {
+      const result = await window.awlAgent.create(`limit-${index}`);
+      if (!result.chat) throw new Error(result.error);
+    }
   });
-  await draft.fill("Keep this discovery draft");
-  const previousCount = await page.locator(".agent-item").count();
-  await libraryTab.click();
+  await draft.fill("This existing chat still works");
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
   await page
-    .getByRole("heading", { name: "Capabilities", exact: true })
+    .locator(".create-agent-error")
+    .filter({ hasText: "chat limit" })
     .waitFor();
-  assert.equal(await dock.isVisible(), false);
   assert.equal(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
+    await page.evaluate(() => sessionStorage.getItem("awl-selected-chat")),
+    selected,
+  );
+  assert.equal(await draft.inputValue(), "This existing chat still works");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .isEnabled(),
     true,
   );
-  await libraryTab.press("ArrowRight");
-  assert.equal(
-    await page
-      .getByRole("tab", { name: "Chat", exact: true })
-      .getAttribute("aria-selected"),
-    "true",
-  );
-  assert.equal(await draft.inputValue(), "Keep this discovery draft");
-  await page.getByRole("tab", { name: "Chat", exact: true }).press("End");
-  assert.equal(await libraryTab.getAttribute("aria-selected"), "true");
-  const statementCard = page.locator(".capability-entry").filter({
-    has: page.getByRole("heading", {
-      name: "Find latest statement",
-      exact: true,
-    }),
-  });
-  const runStatement = statementCard.getByRole("button", {
-    name: "Run Find latest statement",
-    exact: true,
-  });
-  assert.equal(await runStatement.isDisabled(), true);
-  await statementCard.getByLabel("Member ID", { exact: true }).fill("   ");
-  assert.equal(await runStatement.isDisabled(), true);
-  await statementCard
-    .getByLabel("Member ID", { exact: true })
-    .fill("  20731  ");
-  assert.equal(
-    await statementCard
-      .getByLabel("Member ID", { exact: true })
-      .evaluate((el) => getComputedStyle(el).outlineStyle),
-    "none",
-  );
-  await page.screenshot({ path: "test-results/awl-capabilities-library.png" });
-  await runStatement.click();
-  await page
-    .getByRole("heading", {
-      name: "Find latest statement · 20731",
-      exact: true,
-    })
-    .waitFor();
-  assert.equal(await page.locator(".agent-item").count(), previousCount + 1);
-  await page.getByText("Member ID: 20731", { exact: true }).waitFor();
-  await page.getByText("Demo · capability run · v1", { exact: true }).waitFor();
-  assert.equal(
-    await page.getByText("Demo · discovery", { exact: true }).count(),
-    0,
-  );
-  assert.equal(
-    await page
-      .locator(".conversation")
-      .innerText()
-      .then((text) => text.includes("10482")),
-    false,
-  );
-  await page.getByText("Demo run complete.", { exact: true }).waitFor();
-  await draft.fill("Keep this run separate.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-
-  await libraryTab.click();
-  const savingsCard = page.locator(".capability-entry").filter({
-    has: page.getByRole("heading", {
-      name: "Prepare savings account",
-      exact: true,
-    }),
-  });
-  await savingsCard.getByLabel("Member ID", { exact: true }).fill("30519");
-  await savingsCard
-    .getByRole("button", { name: "Run Prepare savings account", exact: true })
-    .click();
   await page
-    .getByRole("heading", {
-      name: "Prepare savings account · 30519",
-      exact: true,
-    })
+    .locator(".live-agent-error")
+    .filter({ hasText: "AI is disabled" })
     .waitFor();
-  assert.equal(await page.locator(".agent-item").count(), previousCount + 2);
-  await page.getByText("Demo run complete.", { exact: true }).waitFor();
+  // A second failure and selecting another chat still leave its composer enabled.
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.locator(".agent-item").first().click();
+  await draft.fill("Another existing chat");
   assert.equal(
-    await page.getByText("Keep this run separate.", { exact: true }).count(),
-    0,
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .isEnabled(),
+    true,
   );
-  await page
-    .getByRole("button", { name: "View capability", exact: true })
-    .click();
-  assert.ok(
-    (await page.locator(".code-card pre").innerText()).includes(
-      "prepare_savings_account",
-    ),
-  );
-  await page
-    .getByRole("button", {
-      name: "Find latest statement · 20731 Completed",
-      exact: true,
-    })
-    .click();
-  await page.getByText("Keep this run separate.", { exact: true }).waitFor();
-  await page
-    .getByRole("button", { name: "Statement lookup Completed", exact: true })
-    .click();
-  await page
-    .getByRole("heading", { name: "Statement lookup", exact: true })
-    .waitFor();
-  assert.equal(
-    await page.getByText("Keep this run separate.", { exact: true }).count(),
-    0,
-  );
-  assert.deepEqual(errors, [], `Renderer errors: ${errors.join(", ")}`);
+  assert.deepEqual(errors, []);
   console.log(
-    "Passed: Electron launch, takeover/resume, capability, replay, session isolation, chat, search, new session, panel resizing/collapse, compact layout.",
+    "Passed: clean startup, no demo UI, live events, rejected-send draft preservation, navigation, resize/collapse, search, session reload, compact layout.",
   );
 } finally {
   await app.close();

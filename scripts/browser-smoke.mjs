@@ -40,7 +40,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
-const env = { ...process.env };
+const env = { ...process.env, AWL_AI_DISABLED: "1" };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
@@ -106,6 +106,12 @@ try {
     }
     assert.equal((await attached()).length, count);
   };
+  await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
+  await page.waitForFunction(
+    () => !document.querySelector(".new-agent").disabled,
+  );
+  const firstAgentId = (await page.evaluate(() => window.awlAgent.state()))
+    .chats[0].id;
   await navigate(`${base}/one`);
   const guest = await guestPage(`${base}/one`);
   await guest
@@ -124,6 +130,40 @@ try {
   await guest
     .getByRole("textbox", { name: "Notes" })
     .fill("Keep this form alive");
+  // Workspace shortcuts still reach the shell while native web content has focus.
+  const guestShortcut = async (alt = false) =>
+    app.evaluate(
+      ({ webContents }, { id, alt }) => {
+        const wc = webContents.fromId(id);
+        wc.focus();
+        const modifiers = [
+          process.platform === "darwin" ? "meta" : "control",
+          ...(alt ? ["alt"] : []),
+        ];
+        wc.sendInputEvent({ type: "keyDown", keyCode: "B", modifiers });
+        wc.sendInputEvent({ type: "keyUp", keyCode: "B", modifiers });
+      },
+      { id: originalId, alt },
+    );
+  await guestShortcut();
+  await page
+    .getByRole("button", { name: "Show sidebar", exact: true })
+    .waitFor();
+  await guestShortcut();
+  await page
+    .getByRole("button", { name: "Hide sidebar", exact: true })
+    .waitFor();
+  await guestShortcut(true);
+  await page
+    .getByRole("button", { name: "Show browser", exact: true })
+    .waitFor();
+  await waitAttached(0);
+  await page.getByRole("button", { name: "Show browser", exact: true }).click();
+  await waitAttached(1);
+  assert.equal(
+    await guest.getByRole("textbox", { name: "Notes" }).inputValue(),
+    "Keep this form alive",
+  );
   await guest.getByRole("button", { name: "Save locally" }).click();
   await page.getByRole("tab", { name: "Overview", exact: true }).click();
   await waitAttached(0);
@@ -143,15 +183,6 @@ try {
   await waitAttached(0);
   await page.getByRole("button", { name: "Show browser", exact: true }).click();
   await waitAttached(1);
-  await page.getByRole("button", { name: "Capability", exact: true }).click();
-  await waitAttached(0);
-  await page.getByRole("button", { name: "Browser", exact: true }).click();
-  await waitAttached(1);
-  assert.equal(
-    await guest.getByRole("textbox", { name: "Notes" }).inputValue(),
-    "Keep this form alive",
-  );
-
   // The native view follows panel dividers and window dimensions in DIP coordinates.
   await page
     .getByRole("separator", { name: "Resize browser panel" })
@@ -193,9 +224,10 @@ try {
   assert.equal((await attached())[0].id, originalId);
 
   // Another agent receives an isolated cookie/storage context.
-  await page
-    .getByRole("button", { name: "Statement lookup Completed", exact: true })
-    .click();
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".agent-item").length === 2,
+  );
   await page.getByRole("heading", { name: "Where are we going?" }).waitFor();
   await navigate(`${base}/two`);
   const other = await guestPage(`${base}/two`);
@@ -204,15 +236,8 @@ try {
     .waitFor();
   assert.equal(await other.evaluate(() => document.cookie), "");
   assert.equal(await other.evaluate(() => localStorage.getItem("saved")), null);
-  await page
-    .getByRole("button", { name: "Member onboarding Needs you", exact: true })
-    .click();
+  await page.locator(".agent-item").first().click();
   await waitAttached(1);
-  assert.equal((await attached())[0].id, originalId);
-  await page.getByRole("button", { name: "Take control", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Resume with awl", exact: true })
-    .click();
   assert.equal((await attached())[0].id, originalId);
 
   // Exercise the real native menu callbacks without leaving an OS menu open.
@@ -238,13 +263,14 @@ try {
   };
   const browserState = () =>
     page.evaluate(
-      async () =>
+      async (agentId) =>
         (
           await window.awlBrowser.command({
             action: "get",
-            agentId: "onboarding",
+            agentId,
           })
         ).state,
+      firstAgentId,
     );
   await openOptions();
   const labels = await app.evaluate(() =>
@@ -327,6 +353,12 @@ try {
     .getByRole("combobox", { name: "Device preset" })
     .selectOption("Tablet");
   await guest.waitForFunction(() => innerWidth === 768);
+  // Native emulation updates before the shell receives and renders its snapshot.
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[aria-label="Viewport width"]').value === "768" &&
+      document.querySelector('[aria-label="Viewport height"]').value === "1024",
+  );
   await page.getByRole("spinbutton", { name: "Viewport width" }).fill("600");
   await page.getByRole("spinbutton", { name: "Viewport height" }).fill("900");
   await page.getByRole("button", { name: "Apply viewport size" }).click();

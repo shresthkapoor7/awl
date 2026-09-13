@@ -1,0 +1,105 @@
+.markdown-message {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.markdown-message > :first-child {
+  margin-top: 0;
+}
+.markdown-message > :last-child {
+  margin-bottom: 0;
+}
+.markdown-message p {
+  white-space: normal;
+  margin: 12px 0;
+}
+.markdown-message :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 24px 0 10px;
+}
+.markdown-message h1 {
+  font-size: 19px;
+}
+.markdown-message h2 {
+  font-size: 16px;
+}
+.markdown-message :is(ul, ol) {
+  padding-left: 24px;
+  margin: 12px 0;
+}
+.markdown-message li {
+  margin: 4px 0;
+}
+.markdown-message li > :is(ul, ol, p) {
+  margin: 4px 0;
+}
+.markdown-message a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.markdown-message blockquote {
+  margin: 16px 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+.markdown-message code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+.markdown-message :not(pre) > code {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.markdown-message pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 16px 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+.markdown-message table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.markdown-message :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+.markdown-message th {
+  font-weight: 500;
+}
+.markdown-message hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+.markdown-message .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+.markdown-message input[type="checkbox"] {
+  margin-right: 8px;
+  accent-color: #aaa;
+}
+.markdown-message strong {
+  font-weight: 600;
+}
+.markdown-message em {
+  font-style: italic;
+  font-synthesis: style;
+}

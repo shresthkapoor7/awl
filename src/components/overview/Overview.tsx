@@ -1,6 +1,6 @@
 import { ArrowUpRight, Minus, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { type Agent } from "../../demo";
+import { type Agent } from "../../agents";
 import { IconButton } from "../ui";
 import { AgentStatus } from "./AgentStatus";
 import { createOffice } from "./office-scene";

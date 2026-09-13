@@ -1,298 +1,102 @@
-import {
-  ArrowRight,
-  ArrowUp,
-  Check,
-  CheckCheck,
-  ChevronDown,
-  Hand,
-  Link2,
-  RotateCcw,
-  SquareArrowOutUpRight,
-} from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { phaseLabel, type Agent } from "../demo";
+import { phaseLabel, type Agent } from "../agents";
+import { MarkdownMessage } from "./MarkdownMessage";
 import { Mark } from "./ui";
-
 type Props = {
   agent: Agent;
-  onSend: (text: string) => void;
-  onTakeControl: () => void;
-  onResume: () => void;
-  onCapability: () => void;
-  onReplay: () => void;
+  model: string;
+  enabled: boolean;
+  startupError: string | null;
+  onSend: (text: string) => Promise<boolean>;
+  onStop: () => Promise<void>;
+  onOpenLink: (url: string) => Promise<void>;
 };
-
 export function Conversation({
   agent,
+  model,
+  enabled,
+  startupError,
   onSend,
-  onTakeControl,
-  onResume,
-  onCapability,
-  onReplay,
+  onStop,
+  onOpenLink,
 }: Props) {
   const [draft, setDraft] = useState("");
-  const [stepsOpen, setStepsOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
-  const empty = agent.phase === "new";
-  const complete = ["ready", "finished", "replaying"].includes(agent.phase);
-  const statement = agent.kind === "statement";
+  const busy = agent.live.status === "running";
   useEffect(() => {
-    setDraft("");
-  }, [agent.id]);
-  useEffect(() => {
-    if (agent.messages.length)
-      scroll.current?.scrollTo({
-        top: scroll.current.scrollHeight,
-        behavior: "instant",
-      });
-  }, [agent.messages.length]);
-  function submit(event?: FormEvent) {
-    event?.preventDefault();
-    if (!draft.trim()) return;
-    onSend(draft.trim());
-    setDraft("");
+    if (!busy) setStopping(false);
+  }, [busy]);
+  async function stop() {
+    if (!busy || stopping) return;
+    setStopping(true);
+    setStopError(null);
+    try {
+      await onStop();
+    } catch {
+      setStopping(false);
+      setStopError("Could not stop the agent. Try again.");
+    }
   }
-
+  useEffect(() => {
+    scroll.current?.scrollTo({
+      top: scroll.current.scrollHeight,
+      behavior: "instant",
+    });
+  }, [agent.messages.length, agent.live.tools.length]);
+  async function submit(event?: FormEvent) {
+    event?.preventDefault();
+    if (!draft.trim() || busy || sending || !enabled) return;
+    const text = draft;
+    setSending(true);
+    try {
+      if (await onSend(text.trim()))
+        setDraft((current) => (current === text ? "" : current));
+    } finally {
+      setSending(false);
+    }
+  }
   return (
     <section
       className="conversation"
       aria-label={`Conversation with ${agent.name}`}
     >
       <header className="conversation-header">
-        <div>
-          <h1>{agent.name}</h1>
-          <span>{empty ? "Start with an outcome." : agent.description}</span>
+        <h1>{agent.name}</h1>
+        <div className="conversation-actions">
+          {agent.messages.length > 0 && (
+            <span className="phase-pill">
+              <span />
+              {stopping ? "Stopping…" : phaseLabel(agent.phase)}
+            </span>
+          )}
+          {busy && (
+            <button
+              className="stop-agent-button"
+              type="button"
+              onClick={() => void stop()}
+              disabled={stopping}
+              aria-label="Stop agent"
+              title="Stop the current turn"
+            >
+              <Square size={11} fill="currentColor" />
+              {stopping ? "Stopping…" : "Stop"}
+            </button>
+          )}
         </div>
-        <span
-          className={`phase-pill ${agent.phase === "waiting" || agent.phase === "human" ? "attention" : ""}`}
-        >
-          <span />
-          {phaseLabel(agent.phase)}
-        </span>
       </header>
       <div className="conversation-scroll" ref={scroll}>
-        {agent.capabilityRun ? (
-          <>
-            <div className="date-divider">
-              <span>Today</span>
-            </div>
-            <article className="user-message">
-              <div className="message-person">
-                <span>You</span>
-                <span>Just now</span>
-              </div>
-              <p>Run {agent.capabilityRun.capability.name}.</p>
-              <p className="capability-run-input">
-                Member ID: {agent.capabilityRun.inputs.member_id}
-              </p>
-            </article>
-            <article className="assistant-message">
-              <div className="assistant-heading">
-                <span className="assistant-avatar">
-                  <Mark />
-                </span>
-                <strong>awl</strong>
-                <span>
-                  Demo · capability run · v
-                  {agent.capabilityRun.capability.version}
-                </span>
-              </div>
-              <div role="status" aria-live="polite">
-                <p>
-                  {agent.phase === "replaying"
-                    ? "Running demo…"
-                    : "Demo run complete."}
-                </p>
-              </div>
-              <p>
-                This previews the saved workflow. No browser actions or model
-                calls are made.
-              </p>
-              <button className="text-button" onClick={onCapability}>
-                View capability <ArrowRight size={14} />
-              </button>
-            </article>
-          </>
-        ) : empty ? (
+        {!agent.messages.length && (
           <div className="welcome">
             <div className="welcome-mark">
               <Mark />
             </div>
-            <span className="eyebrow">YOUR NEXT CAPABILITY STARTS HERE</span>
             <h2>What’s the task?</h2>
-            <p>A website. An outcome. A little help when it needs you.</p>
-            <button
-              className="starter"
-              onClick={() => {
-                setDraft(
-                  "Find member 10482 and prepare a savings account. Stop before submitting.",
-                );
-                input.current?.focus();
-              }}
-            >
-              <span>Try the onboarding demo</span>
-              <ArrowRight size={16} />
-            </button>
+            <p>A website and an outcome.</p>
           </div>
-        ) : (
-          <>
-            <div className="date-divider">
-              <span>Today</span>
-            </div>
-            <article className="user-message">
-              <div className="message-person">
-                <span>You</span>
-                <span>Just now</span>
-              </div>
-              <p>
-                {statement
-                  ? "Find the latest savings statement for member 10482."
-                  : "Find member 10482 and prepare a savings account. Stop before submitting."}
-              </p>
-              <div className="website-chip">
-                <GlobeIcon />
-                <span>demo.awl.local</span>
-              </div>
-            </article>
-            <article className="assistant-message">
-              <div className="assistant-heading">
-                <span className="assistant-avatar">
-                  <Mark />
-                </span>
-                <strong>awl</strong>
-                <span>Demo · discovery</span>
-              </div>
-              <p>
-                {statement
-                  ? "I’ll find the member, open their statements, and locate the most recent one."
-                  : "I’ll find the member and prepare the account. I’ll leave the final submission to you."}
-              </p>
-              <div className="activity-block">
-                <button
-                  className="activity-toggle"
-                  aria-expanded={stepsOpen}
-                  onClick={() => setStepsOpen(!stepsOpen)}
-                >
-                  <span>
-                    <span className="activity-track-icon">
-                      <CheckCheck size={15} />
-                    </span>
-                    {complete ? "4 steps completed" : "3 steps completed"}
-                  </span>
-                  <ChevronDown
-                    size={14}
-                    className={!stepsOpen ? "closed" : ""}
-                  />
-                </button>
-                {stepsOpen && (
-                  <ol className="step-list">
-                    <li>
-                      <Check size={13} />
-                      <span>Opened member services</span>
-                      <span>01</span>
-                    </li>
-                    <li>
-                      <Check size={13} />
-                      <span>Found member 10482</span>
-                      <span>02</span>
-                    </li>
-                    <li>
-                      <Check size={13} />
-                      <span>
-                        {statement
-                          ? "Opened account statements"
-                          : "Selected everyday savings"}
-                      </span>
-                      <span>03</span>
-                    </li>
-                    {complete && (
-                      <li>
-                        <Check size={13} />
-                        <span>
-                          {statement
-                            ? "Located latest statement"
-                            : "Reached the review screen"}
-                        </span>
-                        <span>04</span>
-                      </li>
-                    )}
-                  </ol>
-                )}
-              </div>
-            </article>
-            {(agent.phase === "waiting" || agent.phase === "human") && (
-              <article
-                className={`handoff-card ${agent.phase === "human" ? "is-human" : ""}`}
-              >
-                <div className="handoff-title">
-                  <div className="handoff-icon">
-                    <Hand size={18} strokeWidth={1.7} />
-                  </div>
-                  <span>
-                    {agent.phase === "human"
-                      ? "Over to you."
-                      : "A little help here."}
-                  </span>
-                </div>
-                <p>
-                  {agent.phase === "human"
-                    ? "The browser stays yours. Resume to preview the next demo state."
-                    : "Try the handoff. This demo does not operate on the live website."}
-                </p>
-                <button
-                  className="primary-button"
-                  onClick={agent.phase === "human" ? onResume : onTakeControl}
-                >
-                  {agent.phase === "human" ? "Resume with awl" : "Take control"}
-                  <ArrowRight size={15} />
-                </button>
-              </article>
-            )}
-            {complete && (
-              <article className="completion-card">
-                <div className="completion-title">
-                  <CheckCheck size={18} />
-                  <strong>
-                    {agent.phase === "replaying"
-                      ? "Running the saved steps."
-                      : agent.phase === "ready"
-                        ? "That’s a workflow worth keeping."
-                        : "Done. And ready for next time."}
-                  </strong>
-                </div>
-                <p>
-                  {statement
-                    ? "The latest statement was located. The same steps can be reused for another member."
-                    : "The account request is ready for review. Your confirmation is recorded as a handoff checkpoint."}
-                </p>
-                <button className="saved-capability" onClick={onCapability}>
-                  <span className="capability-mini-icon">
-                    <SquareArrowOutUpRight size={16} />
-                  </span>
-                  <span>
-                    <strong>
-                      {statement
-                        ? "Find latest statement"
-                        : "Prepare savings account"}
-                    </strong>
-                    <small>Reusable capability · v1 · demo</small>
-                  </span>
-                  <ArrowRight size={15} />
-                </button>
-                <button
-                  className="text-button"
-                  onClick={onReplay}
-                  disabled={agent.phase === "replaying"}
-                >
-                  <RotateCcw size={13} />
-                  {agent.phase === "replaying"
-                    ? "Replaying demo…"
-                    : "Try a replay without the model"}
-                </button>
-              </article>
-            )}
-          </>
         )}
         {agent.messages.map((message) => (
           <article
@@ -305,27 +109,48 @@ export function Conversation({
           >
             <div className="message-person">
               <strong>{message.role === "user" ? "You" : "awl"}</strong>
-              <span>
-                {message.role === "assistant" ? "Preview response" : "Just now"}
-              </span>
+              {message.role === "assistant" && <span>{model}</span>}
             </div>
-            <p>{message.text}</p>
+            <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
           </article>
         ))}
+        {!!agent.live.tools.length && (
+          <details className="live-tool-activity">
+            <summary>
+              {busy ? "Working" : "Tool activity"} · {agent.live.tools.length}{" "}
+              calls
+            </summary>
+            <ol>
+              {agent.live.tools.map((tool) => (
+                <li key={tool.id}>
+                  <span>{tool.name.replaceAll("_", " ")}</span>
+                  <span>{tool.detail ?? tool.state}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+        {busy && (
+          <p className="live-agent-status" role="status">
+            {agent.live.tools.at(-1)?.state === "running"
+              ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
+              : "Thinking…"}
+          </p>
+        )}
+        {(stopError || startupError || agent.live.error) && (
+          <p className="live-agent-error" role="alert">
+            {stopError || startupError || agent.live.error}
+          </p>
+        )}
       </div>
       <div className="composer-area">
-        <form className="composer" onSubmit={submit}>
+        <form className="composer" onSubmit={(event) => void submit(event)}>
           <label className="sr-only" htmlFor="message">
             Message your agent
           </label>
           <textarea
             id="message"
-            ref={input}
-            placeholder={
-              empty
-                ? "Tell awl what you want to get done…"
-                : "Give a little direction…"
-            }
+            placeholder="What do you want to get done?"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={2}
@@ -336,26 +161,35 @@ export function Conversation({
                 !event.nativeEvent.isComposing
               ) {
                 event.preventDefault();
-                submit();
+                void submit();
               }
             }}
           />
           <div className="composer-bottom">
-            <button
-              className="send-button"
-              type="submit"
-              aria-label="Send message"
-              disabled={!draft.trim()}
-            >
-              <ArrowUp size={18} />
-            </button>
+            {busy ? (
+              <button
+                className="send-button stop-agent-icon"
+                type="button"
+                aria-label="Stop generating"
+                title="Stop the current turn"
+                disabled={stopping}
+                onClick={() => void stop()}
+              >
+                <Square size={13} fill="currentColor" />
+              </button>
+            ) : (
+              <button
+                className="send-button"
+                type="submit"
+                aria-label="Send message"
+                disabled={!draft.trim() || sending || !enabled}
+              >
+                <ArrowUp size={18} />
+              </button>
+            )}
           </div>
         </form>
       </div>
     </section>
   );
-}
-
-function GlobeIcon() {
-  return <Link2 size={13} />;
 }

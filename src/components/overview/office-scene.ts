@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import type { Agent, Phase } from "../../demo";
+import type { Agent, Phase } from "../../agents";
 import {
   officePose,
   officeLayout,
