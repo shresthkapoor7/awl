@@ -3,7 +3,7 @@ import { defineTool, tabIdSchema, ToolError } from "./core.cjs";
 import { cdp, observable } from "./page.cjs";
 export const browserScreenshot = defineTool(
   "browser_screenshot",
-  "Capture the current tab viewport as an image. Returns CSS viewport size and image size; the image is scaled to at most 1280 pixels wide. Not a full-page image. Sensitive authentication/payment pages cannot be captured. No screenshot is saved to disk.",
+  "Capture the current tab viewport as an image. Returns CSS viewport size and image size; the image is scaled to at most 1280 pixels wide. Not a full-page image. Sensitive authentication/payment pages cannot be captured. A bounded copy can be retained in this chat’s local run history while observation is allowed.",
   z.strictObject({ tab_id: tabIdSchema }),
   async ({ tab_id }, context) => {
     const wc = context.browser.target(context.agentId, tab_id);
