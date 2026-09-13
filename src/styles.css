@@ -278,9 +278,7 @@ strong {
   background: var(--hover);
 }
 .agent-item.selected {
-  background: var(--base);
-  border-color: #555;
-  box-shadow: inset 3px 0 #b0b0b0;
+  background: #212121;
 }
 .agent-glyph {
   color: var(--muted);
