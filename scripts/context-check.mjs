@@ -199,6 +199,49 @@ try {
     "discovery",
   );
   reopened.close();
+  const removedBrowsers = [];
+  const deleting = new AgentRuntime({
+    client: {
+      responses: {
+        create: async (_, { signal }) =>
+          new Promise((_, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+            if (signal.aborted) reject(signal.reason);
+          }),
+      },
+    },
+    browser: {
+      removeSession: async (id) => {
+        removedBrowsers.push(id);
+      },
+    },
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await deleting.ready;
+  deleting.create("delete_running");
+  assert.deepEqual(
+    deleting.send("delete_running", "Wait for cancellation"),
+    {},
+  );
+  assert.deepEqual(await deleting.deleteSession("delete_running"), {});
+  assert(!deleting.list().some((chat) => chat.id === "delete_running"));
+  assert(
+    deleting.create("delete_running").error,
+    "Late work cannot recreate a deleted session",
+  );
+  assert.deepEqual(removedBrowsers, ["delete_running"]);
+  await deleting.flush();
+  const afterDeletion = await new WorkspaceStore(directory).load();
+  assert(!afterDeletion.some((item) => item.chat.id === "delete_running"));
+  assert(
+    afterDeletion.some((item) => item.chat.id === "completed"),
+    "Keep other sessions",
+  );
+  deleting.close();
   console.log(
     "Context: exact-count compaction, opaque item preservation, interrupted call pairing, atomic persistence and private restart passed.",
   );

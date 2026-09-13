@@ -32,6 +32,7 @@ import { Capabilities } from "./components/Capabilities";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
+import { DeleteButton } from "./components/DeleteButton";
 import { IconButton, Mark, StatusDot } from "./components/ui";
 import type { AgentChat } from "../shared/agent";
 
@@ -47,6 +48,7 @@ export function App() {
   const [fallback] = useState(blankAgent);
   const [model, setModel] = useState("gpt-5.6-terra");
   const [agents, setAgents] = useState<Agent[]>([]);
+  const deletedIds = useRef(new Set<string>());
   const [selectedId, setSelectedId] = useState<string | null>(
     sessionStorage.getItem("awl-selected-chat"),
   );
@@ -88,6 +90,7 @@ export function App() {
     let active = true;
     const received = new Set<string>();
     function receive(chat: AgentChat) {
+      if (deletedIds.current.has(chat.id)) return;
       received.add(chat.id);
       if (!active) return;
       setAgents((current) =>
@@ -176,6 +179,25 @@ export function App() {
       return false;
     }
     return true;
+  }
+  async function deleteSession(id: string) {
+    const result = window.awlAgent
+      ? await window.awlAgent
+          .deleteSession(id)
+          .catch(() => ({ error: "Could not delete this session." }))
+      : {};
+    if (result.error) {
+      setCreateError(result.error);
+      return;
+    }
+    deletedIds.current.add(id);
+    const remaining = agents.filter((item) => item.id !== id);
+    setAgents((current) => current.filter((item) => item.id !== id));
+    setCreateError(null);
+    if (agent.id === id) {
+      if (remaining.length) setSelectedId(remaining[0].id);
+      else await newAgent();
+    }
   }
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
@@ -380,34 +402,39 @@ export function App() {
                 item.name.toLowerCase().includes(search.toLowerCase()),
               )
               .map((item) => (
-                <button
-                  key={item.id}
-                  className={`agent-item ${item.id === selectedId ? "selected" : ""}`}
-                  aria-current={item.id === selectedId ? "page" : undefined}
-                  onClick={() => selectAgent(item.id)}
-                >
-                  <span className="agent-glyph">
-                    <Workflow size={17} />
-                  </span>
-                  <span className="agent-copy">
-                    <strong>{item.name}</strong>
-                    <span>
-                      <StatusDot
-                        active={
-                          item.phase === "waiting" ||
-                          item.phase === "human" ||
-                          item.phase === "replaying"
-                        }
-                      />
-                      {item.live && item.phase === "replaying"
-                        ? "Working"
-                        : phaseLabel(item.phase)}
+                <div className="agent-row" key={item.id}>
+                  <button
+                    className={`agent-item ${item.id === selectedId ? "selected" : ""}`}
+                    aria-current={item.id === selectedId ? "page" : undefined}
+                    onClick={() => selectAgent(item.id)}
+                  >
+                    <span className="agent-glyph">
+                      <Workflow size={17} />
                     </span>
-                  </span>
-                  {item.phase === "finished" && (
-                    <Check className="agent-check" size={12} />
-                  )}
-                </button>
+                    <span className="agent-copy">
+                      <strong>{item.name}</strong>
+                      <span>
+                        <StatusDot
+                          active={
+                            item.phase === "waiting" ||
+                            item.phase === "human" ||
+                            item.phase === "replaying"
+                          }
+                        />
+                        {item.live && item.phase === "replaying"
+                          ? "Working"
+                          : phaseLabel(item.phase)}
+                      </span>
+                    </span>
+                    {item.phase === "finished" && (
+                      <Check className="agent-check" size={12} />
+                    )}
+                  </button>
+                  <DeleteButton
+                    name={`session ${item.name}`}
+                    onDelete={() => deleteSession(item.id)}
+                  />
+                </div>
               ))}
             {!agents.some((item) =>
               item.name.toLowerCase().includes(search.toLowerCase()),

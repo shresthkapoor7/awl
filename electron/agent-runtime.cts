@@ -50,6 +50,9 @@ export class AgentRuntime {
   private journal = new Journal();
   private sessions = new Map<string, Session>();
   private lastCreatedAt = 0;
+  private deleting = new Set<string>();
+  private deleted = new Set<string>();
+  private repairing = new Set<string>();
   constructor(
     private options: {
       client: Client | null;
@@ -123,17 +126,29 @@ export class AgentRuntime {
     );
   }
   private publish(session: Session) {
+    if (
+      this.sessions.get(session.chat.id) !== session ||
+      this.deleting.has(session.chat.id)
+    )
+      return;
     session.chat.journal = this.journal.list(session.chat.id);
     this.options.publish(structuredClone(session.chat));
     void this.store
       ?.save({ chat: session.chat, history: session.history })
       .catch(() => {
+        if (
+          this.sessions.get(session.chat.id) !== session ||
+          this.deleting.has(session.chat.id)
+        )
+          return;
         session.chat.error =
           "Could not save this conversation locally. Free disk space before closing awl.";
         this.options.publish(structuredClone(session.chat));
       });
   }
   create(id: string): AgentChat | { error: string } {
+    if (this.deleting.has(id) || this.deleted.has(id))
+      return { error: "This session was deleted." };
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id))
       return { error: "Invalid chat identity." };
     let session = this.sessions.get(id);
@@ -229,6 +244,8 @@ export class AgentRuntime {
     return { request_id: session.chat.pending.id };
   }
   takeover(id: string): { error?: string } {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     const session = this.sessions.get(id);
     if (!session) return { error: "Chat not found." };
     if (session.chat.pending) return {};
@@ -257,6 +274,8 @@ export class AgentRuntime {
     requestId: string,
     answer: string,
   ): Promise<{ error?: string }> {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     const session = this.sessions.get(id);
     if (!session?.chat.pending || session.chat.pending.id !== requestId)
       return { error: "This request is no longer pending." };
@@ -359,6 +378,38 @@ export class AgentRuntime {
       generation: (session.chat.control?.generation ?? 0) + 1,
     };
     this.options.browser.setOwner?.(id, "human");
+  }
+  async deleteSession(id: string): Promise<{ error?: string }> {
+    const session = this.sessions.get(id);
+    if (!session || this.deleting.has(id))
+      return { error: "Session not found or already deleting." };
+    if (this.recordingRequests.has(id) || this.repairing.has(id))
+      return { error: "Wait for the current session update, then delete it." };
+    this.deleting.add(id);
+    try {
+      this.stop(id);
+      const deadline = Date.now() + 5000;
+      while (session.controller && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      if (session.controller)
+        return {
+          error: "The agent is still stopping. Try deleting again in a moment.",
+        };
+      this.recorders.get(id)?.close();
+      await this.options.browser.removeSession?.(id);
+      await this.store?.remove(id);
+      this.recorders.delete(id);
+      this.executions.delete(id);
+      this.sessions.delete(id);
+      this.journal.remove(id);
+      this.deleted.add(id);
+      return {};
+    } catch {
+      return { error: "Could not delete this session. Try again." };
+    } finally {
+      this.deleting.delete(id);
+      if (this.sessions.has(id)) this.publish(session);
+    }
   }
   async launch(
     ref: CapabilityRef,
@@ -481,6 +532,8 @@ export class AgentRuntime {
     }
   }
   async repair(id: string): Promise<{ error?: string }> {
+    if (this.deleting.has(id) || this.repairing.has(id))
+      return { error: "This session is updating." };
     const session = this.sessions.get(id);
     const execution = this.executions.get(id);
     if (
@@ -494,6 +547,7 @@ export class AgentRuntime {
       return {
         error: "Repair needs OPENAI_API_KEY. Deterministic runs do not.",
       };
+    this.repairing.add(id);
     try {
       // Copy the pinned contract into this run's namespace; preserve the original.
       await capabilityWrite.execute(
@@ -522,6 +576,8 @@ export class AgentRuntime {
       return {
         error: "Could not enter repair. The original capability is unchanged.",
       };
+    } finally {
+      this.repairing.delete(id);
     }
   }
   async record(
@@ -530,6 +586,8 @@ export class AgentRuntime {
     stepId?: string,
     parameters: Record<string, string> = {},
   ): Promise<{ error?: string }> {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     if (this.recordingRequests.has(id))
       return { error: "Recording is already updating." };
     this.recordingRequests.add(id);

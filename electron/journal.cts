@@ -6,6 +6,9 @@ export class Journal {
   list(id: string) {
     return structuredClone(this.events.get(id) ?? []);
   }
+  remove(id: string) {
+    this.events.delete(id);
+  }
   add(id: string, actor: RunEvent["actor"], kind: string, label: string) {
     const events = this.events.get(id) ?? [];
     const event: RunEvent = {

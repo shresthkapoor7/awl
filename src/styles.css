@@ -280,6 +280,31 @@ strong {
 .agent-item.selected {
   background: #212121;
 }
+.agent-row {
+  position: relative;
+}
+.agent-row .agent-item {
+  padding-right: 44px;
+}
+.delete-control {
+  display: inline-flex;
+  gap: 2px;
+}
+.delete-control .icon-button {
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+.agent-row > .delete-control {
+  position: absolute;
+  right: 6px;
+  top: 8px;
+  background: var(--base);
+  border-radius: 6px;
+}
+.agent-row:has(.selected) > .delete-control {
+  background: #212121;
+}
 .agent-glyph {
   color: var(--muted);
   padding-top: 4px;

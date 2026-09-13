@@ -353,6 +353,54 @@ try {
       .isEnabled(),
     true,
   );
+  const beforeDelete = (await page.evaluate(() => window.awlAgent.state()))
+    .chats;
+  const newest = beforeDelete[0];
+  assert.equal(
+    await page.locator(".agent-item").first().getAttribute("aria-current"),
+    "page",
+  );
+  await page
+    .locator(".agent-row")
+    .first()
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page
+    .getByRole("button", { name: "Cancel deletion", exact: true })
+    .click();
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    32,
+  );
+  await page
+    .locator(".agent-row")
+    .first()
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page.getByRole("button", { name: /^Confirm delete session/ }).click();
+  await page.waitForFunction(
+    (id) => sessionStorage.getItem("awl-selected-chat") !== id,
+    newest.id,
+  );
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    31,
+  );
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.waitForFunction(
+    () => !document.querySelector(".create-agent-error"),
+  );
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    32,
+  );
+  await page.reload();
+  await page.locator(".agent-item").first().waitFor();
+  assert(
+    !(await page.evaluate(() => window.awlAgent.state())).chats.some(
+      (chat) => chat.id === newest.id,
+    ),
+  );
   assert.deepEqual(errors, []);
   console.log(
     "Passed: clean startup, no demo UI, live events, rejected-send draft preservation, navigation, resize/collapse, search, session reload, compact layout.",

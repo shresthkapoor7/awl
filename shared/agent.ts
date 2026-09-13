@@ -65,6 +65,7 @@ export type SavedCapability = {
   contract: string;
 };
 export type AgentBridge = {
+  deleteSession: (id: string) => Promise<{ error?: string }>;
   create: (id: string) => Promise<{ chat?: AgentChat; error?: string }>;
   capabilities: () => Promise<{ drafts: SavedCapability[]; error?: string }>;
   state: () => Promise<{ enabled: boolean; model: string; chats: AgentChat[] }>;

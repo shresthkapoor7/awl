@@ -150,6 +150,43 @@ try {
   assert.equal(await page.getByText(/Run history ·/).count(), 1);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/workflow-review.png" });
+  const deletedId = await page.evaluate(() =>
+    sessionStorage.getItem("awl-selected-chat"),
+  );
+  const browserCount = await app.evaluate(
+    ({ webContents }, base) =>
+      webContents
+        .getAllWebContents()
+        .filter((wc) => wc.getURL().startsWith(base)).length,
+    base,
+  );
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await page.getByText("Recording demonstration", { exact: true }).waitFor();
+  await page
+    .locator(".agent-row")
+    .filter({ has: page.locator(".selected") })
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page.getByRole("button", { name: /^Confirm delete session/ }).click();
+  await page.waitForFunction(
+    (id) => sessionStorage.getItem("awl-selected-chat") !== id,
+    deletedId,
+  );
+  assert.equal(
+    await app.evaluate(
+      ({ webContents }, base) =>
+        webContents
+          .getAllWebContents()
+          .filter((wc) => wc.getURL().startsWith(base)).length,
+      base,
+    ),
+    browserCount - 1,
+  );
+  assert(
+    !(await page.evaluate(() => window.awlAgent.state())).chats.some(
+      (chat) => chat.id === deletedId,
+    ),
+  );
   console.log(
     "Workflow UI: validation, unlocked Run, fresh execution chats, asynchronous outputs, recording review and view preservation passed.",
   );
