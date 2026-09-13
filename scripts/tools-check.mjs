@@ -59,3 +59,28 @@ assert.equal(
 console.log(
   "Passed: exact evidence retrieval, expiration and current-chat scope.",
 );
+
+const { observedBrowserState, observationURL } =
+  await import("../dist-electron/electron/tools/observation-url.cjs");
+const raw = {
+  tabs: [
+    {
+      id: "tab",
+      url: "https://example.com/callback?code=private-code#access_token=private-token",
+    },
+  ],
+};
+const observed = observedBrowserState(raw);
+assert.equal(observed.tabs[0].url, "https://example.com/callback");
+assert.equal(
+  raw.tabs[0].url.includes("private-code"),
+  true,
+  "The human browser retains its actual URL",
+);
+assert.equal(
+  observationURL("https://user:password@example.com/page?token=secret"),
+  "https://example.com/page",
+);
+console.log(
+  "Passed: URL query, fragment and credential exclusion from model observations.",
+);

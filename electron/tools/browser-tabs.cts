@@ -1,3 +1,4 @@
+import { observedBrowserState } from "./observation-url.cjs";
 import { z } from "zod";
 import { defineTool, tabIdSchema } from "./core.cjs";
 export const browserTabs = defineTool(
@@ -8,6 +9,8 @@ export const browserTabs = defineTool(
     tab_id: tabIdSchema.nullable(),
   }),
   async ({ action, tab_id }, context) => ({
-    data: context.browser.tabs(context.agentId, action, tab_id),
+    data: observedBrowserState(
+      context.browser.tabs(context.agentId, action, tab_id),
+    ),
   }),
 );

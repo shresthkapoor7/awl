@@ -1,3 +1,4 @@
+import { observationURL } from "./observation-url.cjs";
 import {
   installTargeting,
   frameIdentity,
@@ -169,8 +170,11 @@ export const browserDom = defineTool(
       data: {
         tab_id,
         frame_id: frame.id,
-        url: frame.url,
-        frames: frameList,
+        url: observationURL(frame.url),
+        frames: frameList.map((frame) => ({
+          ...frame,
+          url: observationURL(frame.url),
+        })),
         ...data,
         elements: data.elements.map((el) => ({
           ...el,
