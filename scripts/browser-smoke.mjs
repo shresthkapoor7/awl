@@ -107,6 +107,27 @@ try {
     }
     assert.equal((await attached()).length, count);
   };
+  const waitGeometry = async () => {
+    let surface, bounds;
+    const geometryDeadline = Date.now() + 10000;
+    do {
+      surface = await page.locator(".browser-surface").boundingBox();
+      bounds = (await attached())[0].bounds;
+      if (
+        ["x", "y", "width", "height"].every(
+          (key) => Math.abs(surface[key] - bounds[key]) <= 1,
+        )
+      )
+        break;
+      await page.waitForTimeout(100);
+    } while (Date.now() < geometryDeadline);
+    for (const key of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(surface[key] - bounds[key]) <= 1,
+        `${key} mismatch: surface=${JSON.stringify(surface)}, native=${JSON.stringify(bounds)}`,
+      );
+    return { surface, bounds };
+  };
   await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
   await page.waitForFunction(
     () => !document.querySelector(".new-agent").disabled,
@@ -188,24 +209,7 @@ try {
   await page
     .getByRole("separator", { name: "Resize browser panel" })
     .press("ArrowLeft");
-  let surface, bounds;
-  const geometryDeadline = Date.now() + 10000;
-  do {
-    surface = await page.locator(".browser-surface").boundingBox();
-    bounds = (await attached())[0].bounds;
-    if (
-      ["x", "y", "width", "height"].every(
-        (key) => Math.abs(surface[key] - bounds[key]) <= 1,
-      )
-    )
-      break;
-    await page.waitForTimeout(100);
-  } while (Date.now() < geometryDeadline);
-  for (const key of ["x", "y", "width", "height"])
-    assert.ok(
-      Math.abs(surface[key] - bounds[key]) <= 1,
-      `${key} mismatch: surface=${JSON.stringify(surface)}, native=${JSON.stringify(bounds)}`,
-    );
+  await waitGeometry();
   await guest.getByRole("link", { name: "Next page" }).click();
   await guest
     .getByRole("heading", { name: "Second page", exact: true })
@@ -309,10 +313,7 @@ try {
       document.querySelector(".browser-panel").getBoundingClientRect().width ===
       innerWidth,
   );
-  await page.waitForTimeout(100);
-  const fullscreenSurface = await page
-    .locator(".browser-surface")
-    .boundingBox();
+  const { surface: fullscreenSurface } = await waitGeometry();
   assert.ok(
     Math.abs((await attached())[0].bounds.width - fullscreenSurface.width) <= 1,
   );
