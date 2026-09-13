@@ -438,7 +438,7 @@ strong {
 }
 .user-message {
   padding: 16px 20px;
-  background: var(--base);
+  background: #212121;
   border: 1px solid var(--border);
   border-radius: 12px;
 }
