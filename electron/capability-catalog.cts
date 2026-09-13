@@ -1,6 +1,10 @@
+import { loadCapability, validationState } from "./executor.cjs";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import { capabilitySchema } from "./tools/capability-write.cjs";
+import {
+  capabilitySchema,
+  legacyCapabilitySchema,
+} from "./tools/capability-write.cjs";
 import type { SavedCapability } from "../shared/agent.js";
 export async function readCapabilityCatalog(
   root: string,
@@ -41,16 +45,23 @@ export async function readCapabilityCatalog(
           created_at: _,
           ...data
         } = JSON.parse(await readFile(path, "utf8"));
-        const draft = capabilitySchema.parse(data);
+        const draft = (
+          schema_version === 1 ? legacyCapabilitySchema : capabilitySchema
+        ).parse(data);
         if (
-          schema_version !== 1 ||
+          ![1, 2].includes(schema_version) ||
           status !== "draft" ||
           source_chat_id !== chat.name ||
           draft.id !== entry.name ||
           version !== Number(versions[0].slice(1, -5))
         )
           continue;
+        const ref = { id: draft.id, version, sourceChatId: chat.name };
+        const loaded = await loadCapability(root, ref);
+        const validation = await validationState(loaded.path, loaded.hash);
         drafts.push({
+          validation: validation?.status ?? "draft",
+          validationCases: validation?.cases.length ?? 0,
           id: draft.id,
           name: draft.name,
           description: draft.description,

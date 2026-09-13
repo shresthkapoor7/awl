@@ -5,6 +5,14 @@ contextBridge.exposeInMainWorld("awlAgent", {
   create: (id) => ipcRenderer.invoke("agent:create", id),
   capabilities: () => ipcRenderer.invoke("agent:capabilities"),
   send: (id, text) => ipcRenderer.invoke("agent:send", { id, text }),
+  takeover: (id) => ipcRenderer.invoke("agent:takeover", id),
+  resume: (id, requestId, answer) =>
+    ipcRenderer.invoke("agent:resume", { id, requestId, answer }),
+  launch: (ref, inputs, validation) =>
+    ipcRenderer.invoke("agent:launch", { ref, inputs, validation }),
+  repair: (id) => ipcRenderer.invoke("agent:repair", id),
+  record: (id, action, stepId, parameters) =>
+    ipcRenderer.invoke("agent:record", { id, action, stepId, parameters }),
   stop: (id) => ipcRenderer.invoke("agent:stop", id),
   subscribe: (listener) => {
     const handle = (_event, chat) => listener(chat);

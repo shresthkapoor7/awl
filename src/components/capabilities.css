@@ -70,3 +70,35 @@
   max-height: 400px;
   font: 11px/1.8 var(--mono);
 }
+.capability-launch {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+.capability-launch label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.capability-launch input,
+.capability-launch select {
+  border: 1px solid var(--border);
+  background: var(--base);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px;
+}
+.recorded-steps {
+  padding-left: 20px;
+  max-height: 320px;
+  overflow: auto;
+}
+.recorded-steps li {
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+.recorded-steps input {
+  margin-top: 8px;
+}
+.history-capture { display: block; width: 100%; max-height: 340px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; }

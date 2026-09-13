@@ -2,7 +2,11 @@ import { Code2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { SavedCapability } from "../../shared/agent";
 import "./capabilities.css";
-export function Capabilities() {
+export function Capabilities({
+  onLaunch,
+}: {
+  onLaunch: (chat: import("../../shared/agent").AgentChat) => void;
+}) {
   const [drafts, setDrafts] = useState<SavedCapability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +66,12 @@ export function Capabilities() {
                   <div className="capability-entry-heading">
                     <Code2 size={19} />
                     <h2>{draft.name}</h2>
-                    <span>v{draft.version} · draft</span>
+                    <span>
+                      v{draft.version} · {draft.validation ?? "draft"}
+                    </span>
                   </div>
                   <p>{draft.description}</p>
+                  <CapabilityLaunch draft={draft} onLaunch={onLaunch} />
                   <details className="capability-contract">
                     <summary>View draft</summary>
                     <pre>{draft.contract}</pre>
@@ -72,10 +79,100 @@ export function Capabilities() {
                 </article>
               ))}
             </div>
-            <p className="capabilities-note">Drafts aren’t executable yet.</p>
+            <p className="capabilities-note">
+              Validate with two different input sets to unlock Run.
+            </p>
           </>
         )}
       </div>
     </section>
+  );
+}
+
+function CapabilityLaunch({
+  draft,
+  onLaunch,
+}: {
+  draft: SavedCapability;
+  onLaunch: (chat: import("../../shared/agent").AgentChat) => void;
+}) {
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fields: { name: string; type: string; description: string }[] =
+    JSON.parse(draft.contract).inputs;
+  async function launch(validation: boolean) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const values = Object.fromEntries(
+        fields.map((field) => [
+          field.name,
+          field.type === "number"
+            ? Number(inputs[field.name])
+            : field.type === "boolean"
+              ? inputs[field.name] === "true"
+              : (inputs[field.name] ?? ""),
+        ]),
+      );
+      const result = await window.awlAgent?.launch(
+        {
+          id: draft.id,
+          sourceChatId: draft.sourceChatId,
+          version: draft.version,
+        },
+        values,
+        validation,
+      );
+      if (result?.chat) onLaunch(result.chat);
+      else setError(result?.error ?? "Could not start the run.");
+    } catch {
+      setError("Could not start the run.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="capability-launch">
+      {fields.map((field) => (
+        <label key={field.name}>
+          {field.name}
+          {field.type === "boolean" ? (
+            <select
+              value={inputs[field.name] ?? "false"}
+              onChange={(e) =>
+                setInputs({ ...inputs, [field.name]: e.target.value })
+              }
+            >
+              <option value="false">False</option>
+              <option value="true">True</option>
+            </select>
+          ) : (
+            <input
+              type={field.type === "number" ? "number" : "text"}
+              value={inputs[field.name] ?? ""}
+              placeholder={field.description}
+              maxLength={1000}
+              onChange={(e) =>
+                setInputs({ ...inputs, [field.name]: e.target.value })
+              }
+            />
+          )}
+        </label>
+      ))}
+      <div className="request-choices">
+        <button disabled={busy} onClick={() => void launch(true)}>
+          Validate
+          {draft.validationCases ? ` · ${draft.validationCases} passed` : ""}
+        </button>
+        {draft.validation === "validated" && (
+          <button disabled={busy} onClick={() => void launch(false)}>
+            Run
+          </button>
+        )}
+      </div>
+      {error && <p role="alert">{error}</p>}
+    </div>
   );
 }

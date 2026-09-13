@@ -1,6 +1,10 @@
+import { RunHistory } from "./RunHistory";
+import { Demonstration } from "./Demonstration";
+import { RecordingControls } from "./RecordingControls";
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../agents";
+import { HumanRequest } from "./HumanRequest";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { Mark } from "./ui";
 type Props = {
@@ -49,7 +53,8 @@ export function Conversation({
   }, [agent.messages.length, agent.live.tools.length]);
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim() || busy || sending || !enabled) return;
+    if (!draft.trim() || busy || sending || !enabled || agent.live.pending)
+      return;
     const text = draft;
     setSending(true);
     try {
@@ -67,6 +72,7 @@ export function Conversation({
       <header className="conversation-header">
         <h1>{agent.name}</h1>
         <div className="conversation-actions">
+          <RecordingControls key={agent.id} chat={agent.live} />
           {agent.messages.length > 0 && (
             <span className="phase-pill">
               <span />
@@ -109,7 +115,11 @@ export function Conversation({
           >
             <div className="message-person">
               <strong>{message.role === "user" ? "You" : "awl"}</strong>
-              {message.role === "assistant" && <span>{model}</span>}
+              {message.role === "assistant" && (
+                <span>
+                  {agent.live.mode === "execution" ? "Capability" : model}
+                </span>
+              )}
             </div>
             <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
           </article>
@@ -134,9 +144,39 @@ export function Conversation({
           <p className="live-agent-status" role="status">
             {agent.live.tools.at(-1)?.state === "running"
               ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
-              : "Thinking…"}
+              : agent.live.mode === "execution"
+                ? "Executing capability…"
+                : "Thinking…"}
           </p>
         )}
+        {agent.live.execution && (
+          <p className="live-agent-status">
+            {agent.live.execution.validation ? "Validation" : "Execution"} ·{" "}
+            {Math.min(
+              agent.live.execution.step + 1,
+              agent.live.execution.total,
+            )}
+            /{agent.live.execution.total} steps · {agent.live.execution.status}
+          </p>
+        )}
+        {!!agent.live.journal?.length && (
+          <RunHistory key={`history-${agent.id}`} events={agent.live.journal} />
+        )}
+        <Demonstration key={`demonstration-${agent.id}`} chat={agent.live} />
+        {agent.live.pending &&
+          !(
+            agent.live.pending.reason === "demonstration" &&
+            agent.live.demonstration &&
+            agent.live.demonstration.mode !== "off"
+          ) && (
+            <HumanRequest
+              key={agent.live.pending.id}
+              agentId={agent.id}
+              request={agent.live.pending}
+              capture={agent.live.control?.capture}
+              repair={agent.live.mode === "execution"}
+            />
+          )}
         {(stopError || startupError || agent.live.error) && (
           <p className="live-agent-error" role="alert">
             {stopError || startupError || agent.live.error}
@@ -182,7 +222,9 @@ export function Conversation({
                 className="send-button"
                 type="submit"
                 aria-label="Send message"
-                disabled={!draft.trim() || sending || !enabled}
+                disabled={
+                  !draft.trim() || sending || !enabled || !!agent.live.pending
+                }
               >
                 <ArrowUp size={18} />
               </button>

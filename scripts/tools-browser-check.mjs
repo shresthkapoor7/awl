@@ -29,6 +29,24 @@ const server = createServer((req, res) => {
     res.end(fixture);
     return;
   }
+  if (req.url === "/covered") {
+    res.end(
+      '<button style="position:absolute;left:20px;top:20px;width:100px;height:40px">Covered</button><div style="position:absolute;left:20px;top:20px;width:100px;height:40px;z-index:2">Overlay</div>',
+    );
+    return;
+  }
+  if (req.url === "/fields") {
+    res.end(
+      `<textarea id="random_${Date.now()}" name="q" role="combobox" aria-label="Search" onkeydown="if(event.key==='Enter'){event.preventDefault();document.querySelector('#result').textContent=this.value}">old query</textarea><input aria-label="Quantity" type="number" value="42"><input aria-label="Rejected" oninput="this.value=''"><input aria-label="Focus trap" onfocus="document.querySelector('[name=q]').focus()"><p id="result"></p>`,
+    );
+    return;
+  }
+  if (req.url === "/targets") {
+    res.end(
+      `<input placeholder="Search a paper"><button>Search</button><button>Duplicate</button><button>Duplicate</button><div id="host"></div><script>document.querySelector("#host").attachShadow({mode:"open"}).innerHTML='<input placeholder="Shadow search">';</script>`,
+    );
+    return;
+  }
   if (req.url === "/ordinary-numeric") {
     res.end(
       '<label>Quantity<input inputmode="numeric" value="4"></label><label>Postal code<input inputmode="numeric" value="10001"></label><input name="otp" type="hidden" value="fixture-secret">',
@@ -84,6 +102,14 @@ try {
   });
   assert.equal(opened.ok, true, JSON.stringify(opened));
   const tabId = opened.data.activeTabId;
+  await app.evaluate(() => {
+    globalThis.nativeInterruptions = 0;
+    globalThis.awlToolsTest.browser.onHumanInput((id) => {
+      globalThis.nativeInterruptions++;
+      globalThis.awlToolsTest.browser.setOwner(id, "human");
+    });
+    globalThis.awlToolsTest.browser.setOwner("test", "agent");
+  });
   assert.equal(opened.data.tabs[0].title, "Tool fixture");
   assert.equal(
     (
@@ -288,6 +314,128 @@ try {
     (await call("browser-screenshot", "browserScreenshot", { tab_id: tabId }))
       .ok,
     true,
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/targets`,
+    tab_id: tabId,
+  });
+  const targets = await inspect();
+  const searchTarget = targets.data.elements.find(
+    (el) => el.name === "Search a paper",
+  ).target;
+  const shadowTarget = targets.data.elements.find(
+    (el) => el.name === "Shadow search",
+  ).target;
+  assert.equal(searchTarget.kind, "placeholder");
+  assert.deepEqual(shadowTarget.shadow, ["#host"]);
+  const resolve = (target) =>
+    app.evaluate(
+      async (_, { target, tabId }) => {
+        const { resolveTarget } = globalThis.awlToolsTest;
+        try {
+          return await resolveTarget(
+            globalThis.awlToolsTest.browser.target("test", tabId),
+            target,
+          );
+        } catch (error) {
+          return { error: error.code };
+        }
+      },
+      { target, tabId },
+    );
+  assert.ok((await resolve(searchTarget)).snapshot_id);
+  assert.ok((await resolve(shadowTarget)).snapshot_id);
+  assert.equal(
+    (
+      await resolve({
+        ...searchTarget,
+        kind: "role",
+        role: "button",
+        value: "Duplicate",
+      })
+    ).error,
+    "AMBIGUOUS_TARGET",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/targets`,
+    tab_id: tabId,
+  });
+  assert.ok(
+    (await resolve(searchTarget)).snapshot_id,
+    "semantic target survives reload",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/covered`,
+    tab_id: tabId,
+  });
+  const covered = await inspect();
+  const coveredClick = await call("browser-action", "browserAction", {
+    tab_id: tabId,
+    frame_id: covered.data.frame_id,
+    snapshot_id: covered.data.snapshot_id,
+    ref: covered.data.elements.find((el) => el.name === "Covered").ref,
+    action: "click",
+    value: null,
+  });
+  assert.equal(coveredClick.error.code, "OBSCURED_ELEMENT");
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
+  const fieldAction = async (name, action, value) => {
+    const dom = await inspect();
+    return call("browser-action", "browserAction", {
+      tab_id: tabId,
+      frame_id: dom.data.frame_id,
+      snapshot_id: dom.data.snapshot_id,
+      ref: dom.data.elements.find((e) => e.name === name).ref,
+      action,
+      value,
+    });
+  };
+  const fields = await inspect();
+  const queryTarget = fields.data.elements.find(
+    (e) => e.name === "Search",
+  ).target;
+  assert.equal(queryTarget.value, 'textarea[name="q"]');
+  const typed = await fieldAction("Search", "fill", "NFL Sunday Ticket");
+  assert.equal(typed.ok, true, JSON.stringify(typed));
+  assert.equal(typed.data.value_verified, true);
+  assert.equal((await fieldAction("Search", "press", "Enter")).ok, true);
+  assert((await inspect()).data.text.includes("NFL Sunday Ticket"));
+  assert.equal((await fieldAction("Search", "fill", "")).ok, true);
+  assert.equal((await fieldAction("Quantity", "fill", "7")).ok, true);
+  assert.equal(
+    (await fieldAction("Rejected", "fill", "not retained")).error.code,
+    "FIELD_VALUE_CHANGED",
+  );
+  assert.equal(
+    (await fieldAction("Focus trap", "fill", "wrong field")).error.code,
+    "FOCUS_FAILED",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
+  assert.equal(
+    (await resolve(queryTarget)).inputValue,
+    "old query",
+    "named target survives regenerated IDs",
+  );
+  assert.equal(
+    await app.evaluate(() => globalThis.nativeInterruptions),
+    0,
+    "automation input must not trigger human takeover",
+  );
+  await app.evaluate((_, tabId) => {
+    const wc = globalThis.awlToolsTest.browser.target("test", tabId);
+    wc.sendInputEvent({ type: "keyDown", keyCode: "A" });
+    wc.sendInputEvent({ type: "keyUp", keyCode: "A" });
+  }, tabId);
+  assert.equal(
+    await app.evaluate(() => globalThis.nativeInterruptions),
+    1,
+    "native input interrupts agent ownership",
   );
   console.log(
     "Passed: browser tools, real fill/click, stale refs, frames, shadow roots, sensitive capture blocks, waits, and chat isolation.",

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 const env = { ...process.env, AWL_AI_DISABLED: "1" };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: ["."],
+  args: testElectronArgs(["."]),
   env,
 });
 try {
@@ -15,7 +15,8 @@ try {
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
-    window.hide();
+    if (process.env.CI) window.show();
+    else window.hide();
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -43,7 +44,7 @@ try {
   const done = {
     ...second,
     name: "Read the guide",
-    status: "idle",
+    status: "completed",
     messages: [{ id: "answer", role: "assistant", text: "Done." }],
   };
   await publish(working);
@@ -93,13 +94,35 @@ try {
   await page.getByText("Done.", { exact: true }).waitFor();
   await overview.click();
   await ready();
-  await publish({ ...working, status: "error", error: "Needs input." });
+  await publish({ ...working, status: "error", error: "Run failed." });
+  await page
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='error']")
+    .waitFor();
+  await status("Research", "Failed");
+  await publish({ ...working, status: "stopped" });
+  await page
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='stopped']")
+    .waitFor();
+  await status("Research", "Stopped");
+  await publish({
+    ...working,
+    status: "waiting",
+    pending: {
+      id: "help",
+      reason: "clarification",
+      question: "Which paper?",
+      choices: [],
+      expected_text: null,
+    },
+  });
   await page
     .getByRole("button", { name: "Open Research chat", exact: true })
     .locator(".office-status[data-phase='waiting']")
     .waitFor();
   await status("Research", "Needs you");
-  await publish({ ...working, status: "idle" });
+  await publish({ ...working, status: "completed" });
   await page
     .getByRole("button", { name: "Open Research chat", exact: true })
     .locator(".office-status[data-phase='finished']")

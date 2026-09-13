@@ -1,100 +1,66 @@
 # awl
 
-Computer use that learns a workflow, turns it into code, and asks for help when it needs you.
+Computer use that learns a workflow, turns it into a capability, and asks for help when it needs you.
 
-## The problem
-
-Many applications expose their useful operations only through a user interface. People repeat the same searches, forms, and confirmation steps by hand. An AI agent can navigate those screens, but reasoning through a familiar task on every run adds cost, latency, and variability. Recorded automation also needs a way to handle unexpected states and learn from corrections.
-
-awl is being built to connect discovery, reliable execution, and human help in one local workspace.
-
-## The idea
-
-Give awl a website and a goal in chat. It will work through the interface while you watch and control the same browser beside the conversation. When it gets stuck or needs authentication, you can take over, help it, and hand the session back.
-
-A successful workflow becomes a reusable capability with defined inputs, outputs, and checks, compiled into executable code. Future runs use that code without an LLM in the execution loop. When an unfamiliar issue appears, you can bring the agent back to investigate and turn the correction into a validated new version.
-
-An optional 3D office overview will show agents' activity and highlight where attention is needed. Chat and the live browser remain the main workspace.
-
-## Direction
-
-- Local desktop application and browser execution.
-- OpenAI API and official SDK for discovery and repair.
-- Explicit human takeover and resume within the same session.
-- Versioned capabilities and deterministic execution.
-- Learning from scoped corrections without storing credentials in workflows.
-
-## Status
-
-Electron workspace with a live embedded Chromium browser. Enter a website in the address bar and use it directly beside chat. Each agent has its own isolated browser session; tabs, forms, navigation history, and cookies stay alive when switching agents, collapsing the pane, or opening the office. Popups open as tabs in the same session, including opener-based sign-in flows.
-
-New chats use GPT-5.6 Terra through the OpenAI Responses API and the official SDK. Terra can name a chat, open and navigate its browser, inspect DOM elements and frames, capture viewport screenshots, interact with controls, wait for page changes, and write/read versioned capability drafts. The workspace starts with an empty chat; messages, tool activity, and session status come from the live agent. Browser sessions are held in memory for the current app window and are cleared when it closes. Browser views survive a UI reload, and live chats reconnect to their in-memory state after a UI reload. Live conversations are not persisted across app restarts. Capability drafts are saved under the app’s local user-data directory.
-
-The **Capabilities** tab lists saved capability drafts with their latest version and contract. Drafts are inspectable, but compilation and execution are not implemented yet.
-
-The **Overview** tab shows the same sessions in a 3D office. Select a workstation, label, or list entry to open its existing chat. Agents work during a model turn, ask for attention when a turn stops or fails, and gather at the water cooler when a turn finishes. New sessions wait at their desks. The overview reflects session activity without starting extra work.
+Many applications expose useful operations only through their interface. People repeat the same searches and forms by hand; an AI agent can navigate them, but reasoning through every repeat adds cost, latency, and variability. awl connects discovery, human demonstration, deterministic execution, and repair in one local desktop workspace.
 
 ## Run locally
 
-Requires Node.js 22.12 or newer and npm. Electron is installed as a project dependency; a global installation is not needed. Its browser binary may download on the first launch. On macOS, the launch scripts create a cached **awl.app** runtime with its own identity for the menu bar and Dock. The cache lives in `node_modules/.cache/awl` and refreshes when Electron changes.
+Requires Node.js 22.12+ and npm. Electron is a project dependency.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Set `OPENAI_API_KEY` in the ignored project-root `.env`, then restart Electron. Select **New agent** and send a website and a goal. The default model is `gpt-5.6-terra`; `OPENAI_MODEL` can override it. Credentials are read only in the main process. The UI-only preview cannot run the agent or embedded browser.
+Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The key stays in the main process. Validating and running saved capabilities does not require an API key.
 
-To run the built UI in Electron:
+Renderer edits reload during development. Restart `npm run dev` after changing Electron or preload code. `npm start` builds and launches the app; `npm run dev:web` previews only the renderer. On macOS, the launcher prepares a cached awl.app with its own menu-bar and Dock identity.
 
-```sh
-npm start
-```
+## The workflow
 
-For a UI-only preview, run `npm run dev:web` and open the local URL printed by Vite. The embedded browser requires Electron. Renderer changes reload automatically during `npm run dev`; restart that command after changing Electron or preload code.
+1. **Discover.** Give a website and a goal in chat. Watch the agent use the actual Chromium browser beside the conversation.
+2. **Help.** A structured question pauses the agent and transfers the same session to you. Authentication happens directly in the browser. Select Resume to allow a fresh observation and continue. Stop prevents further scheduling; it cannot undo an action already dispatched.
+3. **Teach.** Select Record and demonstrate a workflow. Recording continues across navigation and page updates. Pause for private interaction; select Stop & build when finished. awl infers parameters and starts drafting the capability automatically. The captured steps remain available to inspect.
+4. **Validate.** Review the versioned contract in Capabilities and launch validation with explicit inputs. Parameterized capabilities require successful runs with two distinct input sets before Run appears. Each launch gets a new chat and browser session.
+5. **Run.** The constrained executor navigates, resolves targets, performs declared operations, verifies the final checkpoint, and reads outputs. It has no model client, shell, or arbitrary script execution.
+6. **Repair.** Missing or ambiguous targets and unexpected states pause execution. Resume checks the current page; an uncertain action requires explicit confirmation before advancing. Repair with awl explicitly reintroduces the model in the existing browser. It copies the pinned contract into the repair chat and writes new draft versions without modifying the original. Validate the correction before using it again.
 
-## Use the workspace
+Capabilities compile into a bounded operation plan and a readable JavaScript artifact. The runtime executes the validated plan directly; it does not evaluate generated JavaScript. Schema validation alone does not unlock execution.
 
-1. Enter a website address in the browser pane; use Back, Forward, Reload, and the tab controls to browse. Cmd/Ctrl+L focuses the address bar.
-2. Switch agents to browse in another isolated session, then return to find your original page intact.
-3. Send a goal in chat to start the agent; inspect its tool activity or select **Stop** to cancel further work.
-4. Open **Overview** or **Capabilities**, or collapse the browser, without losing the live session.
+## Workspace
 
-Use the top-bar toggles to collapse either side panel, and drag their inner edges to resize them. Focused dividers also support arrow keys. Use **Cmd+B** for the left sidebar and **Cmd+Option+B** for the browser panel (**Ctrl+B** / **Ctrl+Alt+B** on Windows and Linux). Shortcuts also work while a browser tab has focus.
+Each chat has its own isolated browser session. Tabs, forms, cookies, and navigation survive view changes and renderer reloads. The optional 3D Overview projects actual run state; selecting an agent returns to its conversation. Completed tasks head to the water cooler; ending a model response alone does not mark a task complete.
 
-The browser’s **…** menu includes hard reload, DevTools for the active page, a separate preview window, device viewport controls, appearance, zoom, and per-agent cookie/cache clearing. Closing the separate preview returns the same live tab to the workspace. The expand button at the top fills the app with the browser; Escape restores the split view. Device presets, custom dimensions, and rotation preview responsive layouts without changing the session. Appearance follows System, Light, or Dark across the preview browsers; the workspace remains dark.
+Both side panels collapse and resize. Use **Cmd+B** for the left, **Cmd+Option+B** for the right, and **Cmd/Ctrl+L** for the browser address. The browser includes fullscreen, detached preview, device sizing, DevTools, zoom, appearance, and cookie/cache controls.
 
-Web pages run sandboxed without Node or the app's IPC bridge. The browser supports HTTP/HTTPS navigation; downloads, external app links, and permission-dependent features such as camera or geolocation are not connected yet. Recording, deterministic replay, persistent browser profiles, and crash recovery are future work.
-The office supports orbit, zoom, reset, and reduced motion. It stops rendering when closed or when the app is hidden. If WebGL is unavailable, the agent list remains usable. Scene assets ship locally.
+Run history plays back recorded events and retained screenshots. Playback never executes browser actions. Private intervals appear as gaps; events without images remain visible in the timeline.
+
+## State and capture
+
+Conversations, model history, reviewed recording state, and the bounded run journal are saved locally under the application's user-data directory. Writes are atomic. Restart restores conversations in private human control. Browser profiles, tabs, and authentication are deliberately ephemeral; restoring a transcript does not resume an interrupted capability or prove its last action succeeded.
+
+Discovery observations are independent of demonstration recording. During private takeover, model observation is stopped. Recording excludes input from frames with detected password, OTP, or payment controls without ending the recording session. Capture resumes on safe pages; explicit Pause keeps capture off until you select Record again. Field detection uses semantic hints and is not a complete sensitive-data classifier: use private control for sensitive information it cannot recognize. Credentials never belong in chat or capability inputs.
+
+The model receives accumulated conversation state with API storage disabled. Input token counts trigger supported compaction at 48,000 tokens. Pending questions, ownership, capability versions, and the journal remain outside the compacted context. The newest two screenshots remain in model context; the journal retains at most 20 exact tool results and four permitted screenshots for retrieval/history. Other journal metadata is capped at 2,000 events. A workspace currently supports 32 chats, with a 16 MB persistence limit per conversation.
+
+Each model turn is bounded to 30 responses, 60 tool calls, and five minutes; individual tools have a 20-second deadline. Repeated identical results prompt a question. Deterministic steps have a 15-second deadline and never silently fall back to a model.
+
+## Tools and targeting
+
+The model can name chats, open/navigate browsers, manage tabs, capture screenshots, inspect DOM/frames, act on observed elements, wait for conditions, ask the user, verify completion, read retained evidence, and read/write capability drafts. Tools have strict schemas and per-chat scope. Actions consume snapshot references and reject stale or replaced nodes.
+
+Reusable targets support unique CSS attributes, common native roles and accessible names, labels, placeholders, scoped text, supported frames, and open shadow roots. Ambiguity produces an error; the resolver does not pick the first match. Existing CSS-only drafts remain readable.
+
+Current execution supports one tab and one declared origin per capability, with navigation, click, fill, select, key submission, text checkpoints, and string outputs. Recording is structured action capture, not continuous video. Actions are delivered through an isolated browser binding before navigation destroys the document, and hooks are installed in new documents. Frame inspection reconnects through page changes. Private gaps and unsupported targets remain visible evidence; the model must investigate missing steps rather than invent them. Recordings are bounded to 500 steps. Broader desktop control, persistent login profiles, downloads, and submission packaging remain outside this milestone.
 
 ## Checks
 
 ```sh
 npm run build
-npm run test:ui
-npm run test:tools
+npm run test:all
 ```
 
-The UI check launches Electron and exercises live browsing against a local test site, navigation, popup sign-in, session isolation, form preservation, tab lifecycle, native view bounds, error recovery, empty and live chat states, UI reloads, and the office overview. It requires a graphical desktop and writes screenshots to the ignored `test-results/` directory.
+GitHub Actions runs the build and fixture tests on Linux and macOS for pull requests and feature-branch pushes. No API key is needed. Tests cover browser isolation, targeting, private capture, handoff/cancellation, recording, two-input validation, zero-model execution, explicit repair, context/restart handling, workspace UI, and office behavior. Linux tests run under Xvfb. Failure screenshots are uploaded as CI artifacts.
 
-## Agent tools
-
-| Tool                 | Purpose                                                                  |
-| -------------------- | ------------------------------------------------------------------------ |
-| `chat_set_name`      | Rename the current chat.                                                 |
-| `browser_start`      | Open a website or navigate an explicit tab.                              |
-| `browser_tabs`       | List, select, and close this chat’s tabs.                                |
-| `browser_screenshot` | Capture a bounded viewport image for the model.                          |
-| `browser_dom`        | Read visible text, frames, and controls with snapshot-scoped references. |
-| `browser_action`     | Click, fill, select, press keys, or scroll an observed element.          |
-| `browser_wait`       | Wait for visible text or a URL condition.                                |
-| `capability_write`   | Validate and save an immutable, parameterized capability draft.          |
-| `capability_read`    | List and inspect this chat’s saved drafts and versions.                  |
-
-Tools use strict schemas, per-chat browser targets, structured errors, and time limits. Actions consume their DOM snapshot; stale or replaced targets require a fresh observation. Browser content is treated as untrusted input. Visible password fields and OTP/payment fields identified through autocomplete tokens, names, labels, or other semantic hints block observation; authentication must happen directly in the browser. This detection is conservative and is not a complete sensitive-data classifier.
-
-Each turn allows up to 30 model responses, 60 tool calls, and five minutes. Tool calls have a 20-second deadline. Stop cancels further work; an action already dispatched may have taken effect, so inspect before repeating it. Screenshots stay in memory and are sent to OpenAI; only the newest two are retained in ongoing model context. Tools expose no arbitrary shell, filesystem, or JavaScript execution to the model.
-
-Capability drafts contain typed inputs/outputs, observed selectors, ordered steps, and a final checkpoint. Draft selectors currently target the main document. Schema validation does not establish that a workflow is replayable: compilation, execution, repair, and promotion remain separate future work.
-
-`npm run test:tools` uses local fixtures and a fake model client. The optional `AWL_LIVE_TEST=1 node scripts/agent-live-check.mjs` uses the configured API key and incurs API usage against a disposable local page; build first.
+`npm run test:tools` and `npm run test:ui` run smaller suites. The optional `AWL_LIVE_TEST=1 node scripts/agent-live-check.mjs` uses the configured key and incurs API usage; build first.

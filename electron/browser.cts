@@ -12,6 +12,7 @@ import {
   type WebPreferences,
 } from "electron";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
+import { automationInput } from "./tools/page.cjs";
 import { randomUUID } from "node:crypto";
 import { ToolError, type BrowserAccess } from "./tools/core.cjs";
 import type {
@@ -72,6 +73,13 @@ function normalizeURL(value: unknown): string {
 }
 
 export function installBrowser(window: BrowserWindow): BrowserAccess {
+  const owners = new Map<string, "human" | "agent">();
+  let humanInput: ((id: string) => void) | undefined;
+  const interruptHumanInput = (id: string) => {
+    if (owners.get(id) !== "agent") return false;
+    humanInput?.(id);
+    return true;
+  };
   const browsers = new Map<string, AgentBrowser>();
   const launchId = randomUUID();
   let presentation: {
@@ -224,6 +232,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     input: BrowserCommand,
   ) {
     const wc = tab.view.webContents;
+    if (input.action !== "options" && interruptHumanInput(browser.id))
+      throw new Error("Agent paused. Try the browser action again.");
     switch (input.action) {
       case "hard-reload":
         if (tab.error) {
@@ -483,6 +493,32 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
+    wc.on("before-input-event", (event, input) => {
+      if (
+        input.key === "Escape" &&
+        owners.get(browser.id) === "agent" &&
+        !automationInput.has(wc)
+      )
+        event.preventDefault();
+      const workspaceShortcut =
+        (input.meta || input.control) && ["KeyB", "KeyL"].includes(input.code);
+      if (
+        input.type === "keyDown" &&
+        !workspaceShortcut &&
+        input.key !== "Escape" &&
+        !automationInput.has(wc) &&
+        interruptHumanInput(browser.id)
+      )
+        event.preventDefault();
+    });
+    wc.on("before-mouse-event", (event, input) => {
+      if (
+        ["mouseDown", "mouseWheel"].includes(input.type) &&
+        !automationInput.has(wc) &&
+        interruptHumanInput(browser.id)
+      )
+        event.preventDefault();
+    });
     installWorkspaceShortcuts(window, wc);
     wc.on("dom-ready", () => {
       tab.ready = true;
@@ -643,6 +679,13 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
         )
           throw new Error("Invalid browser command.");
         const browser = getBrowser(input.agentId);
+        if (
+          !["get", "options"].includes(String(input.action)) &&
+          interruptHumanInput(browser.id)
+        )
+          throw new Error(
+            "Agent paused. You’re in control; try the browser action again.",
+          );
         const tab = browser.tabs.find((tab) => tab.id === browser.active)!;
         const wc = tab.view.webContents;
         browser.notice = null;
@@ -765,6 +808,12 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     return tab;
   }
   return {
+    onHumanInput: (handler) => {
+      humanInput = handler;
+    },
+    setOwner: (id, owner) => {
+      owners.set(id, owner);
+    },
     target: (agentId, tabId) => target(agentId, tabId).view.webContents,
     tabs(agentId, action, tabId) {
       const browser = getBrowser(agentId);

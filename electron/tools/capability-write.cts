@@ -1,3 +1,4 @@
+import { targetSchema } from "../../shared/target.js";
 import { z } from "zod";
 import { mkdir, readdir, writeFile, link, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ const field = z.strictObject({
   type: z.enum(["string", "number", "boolean"]),
   description: z.string().min(1).max(300),
 });
-export const capabilitySchema = z.strictObject({
+export const legacyCapabilitySchema = z.strictObject({
   id: name,
   name: z.string().min(1).max(80),
   description: z.string().min(1).max(500),
@@ -38,6 +39,16 @@ export const capabilitySchema = z.strictObject({
     .min(2)
     .max(60),
   on_unknown_state: z.literal("pause_for_human"),
+});
+export const capabilitySchema = legacyCapabilitySchema.extend({
+  steps: z
+    .array(
+      legacyCapabilitySchema.shape.steps.element.extend({
+        target: targetSchema.nullable(),
+      }),
+    )
+    .min(2)
+    .max(60),
 });
 export type CapabilityDraft = z.infer<typeof capabilitySchema>;
 export function validateCapability(draft: CapabilityDraft) {
@@ -106,6 +117,7 @@ export function validateCapability(draft: CapabilityDraft) {
         url.search ||
         url.hash ||
         step.selector ||
+        step.target ||
         step.input ||
         step.output
       )
@@ -114,10 +126,15 @@ export function validateCapability(draft: CapabilityDraft) {
           "Navigation must stay on the declared origin and omit credentials, queries, fragments, and unrelated fields.",
         );
     } else {
-      if (!step.selector?.trim())
+      if (step.selector && step.target)
         throw new ToolError(
           "INVALID_CAPABILITY",
-          "Each non-navigation step needs an observed CSS selector.",
+          "Use one target strategy per step.",
+        );
+      if (!step.selector?.trim() && !step.target)
+        throw new ToolError(
+          "INVALID_CAPABILITY",
+          "Each non-navigation step needs an observed target.",
         );
       if (["fill", "select"].includes(step.operation)) {
         if (!step.input || step.value !== null || step.output)
@@ -186,7 +203,7 @@ export function validateCapability(draft: CapabilityDraft) {
 }
 export const capabilityWrite = defineTool(
   "capability_write",
-  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, stable observed CSS selectors, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Only main-document selectors are supported by this draft format. Credentials must never be recorded. This saves a validated draft, not an executable or replay-validated workflow.",
+  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, observed target descriptions from browser_dom, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Use each observed target object including its frame and shadow scope. Set selector=null when providing target; keep target=null for navigation. CSS selectors are supported as a main-document fallback. Credentials must never be recorded. This saves a validated draft, not an executable or replay-validated workflow.",
   capabilitySchema,
   async (draft, context) => {
     validateCapability(draft);
@@ -210,7 +227,7 @@ export const capabilityWrite = defineTool(
       );
     const version = current + 1;
     const artifact = {
-      schema_version: 1,
+      schema_version: 2,
       ...draft,
       version,
       status: "draft",

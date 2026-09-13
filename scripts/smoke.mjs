@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 const env = { ...process.env, AWL_AI_DISABLED: "1" };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: ["."],
+  args: testElectronArgs(["."]),
   env,
 });
 try {
@@ -16,7 +16,8 @@ try {
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
-    window.hide();
+    if (process.env.CI) window.show();
+    else window.hide();
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -59,8 +60,10 @@ try {
   await leftDivider.press("ArrowRight");
   assert.equal((await sidebar.boundingBox()).width, left + 16);
   const right = (await dock.boundingBox()).width;
+  await rightDivider.press("ArrowRight");
+  assert.equal((await dock.boundingBox()).width, right - 16);
   await rightDivider.press("ArrowLeft");
-  assert.equal((await dock.boundingBox()).width, right + 16);
+  assert.equal((await dock.boundingBox()).width, right);
   await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
   await page.getByRole("button", { name: "Hide browser", exact: true }).click();
   assert.equal(await dock.isVisible(), false);

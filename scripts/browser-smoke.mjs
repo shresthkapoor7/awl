@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 
 let cacheRequests = 0;
 const server = createServer((req, res) => {
@@ -45,7 +45,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: ["."],
+  args: testElectronArgs(["."]),
   env,
 });
 try {
@@ -59,7 +59,8 @@ try {
     if (process.platform === "darwin") app.setActivationPolicy("accessory");
     const window = BrowserWindow.getAllWindows()[0];
     window.removeAllListeners("ready-to-show");
-    window.hide();
+    if (process.env.CI) window.show();
+    else window.hide();
     window.webContents.setBackgroundThrottling(false);
   });
   const address = page.getByRole("textbox", { name: "Website address" });
@@ -105,6 +106,27 @@ try {
       await page.waitForTimeout(30);
     }
     assert.equal((await attached()).length, count);
+  };
+  const waitGeometry = async () => {
+    let surface, bounds;
+    const geometryDeadline = Date.now() + 10000;
+    do {
+      surface = await page.locator(".browser-surface").boundingBox();
+      bounds = (await attached())[0].bounds;
+      if (
+        ["x", "y", "width", "height"].every(
+          (key) => Math.abs(surface[key] - bounds[key]) <= 1,
+        )
+      )
+        break;
+      await page.waitForTimeout(100);
+    } while (Date.now() < geometryDeadline);
+    for (const key of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(surface[key] - bounds[key]) <= 1,
+        `${key} mismatch: surface=${JSON.stringify(surface)}, native=${JSON.stringify(bounds)}`,
+      );
+    return { surface, bounds };
   };
   await page.getByRole("button", { name: "New agent", exact: true }).waitFor();
   await page.waitForFunction(
@@ -187,11 +209,7 @@ try {
   await page
     .getByRole("separator", { name: "Resize browser panel" })
     .press("ArrowLeft");
-  await page.waitForTimeout(100);
-  const surface = await page.locator(".browser-surface").boundingBox();
-  const bounds = (await attached())[0].bounds;
-  for (const key of ["x", "y", "width", "height"])
-    assert.ok(Math.abs(surface[key] - bounds[key]) <= 1, `${key} mismatch`);
+  await waitGeometry();
   await guest.getByRole("link", { name: "Next page" }).click();
   await guest
     .getByRole("heading", { name: "Second page", exact: true })
@@ -215,7 +233,15 @@ try {
   // Native popup relationships survive inside tabs (including auth postMessage).
   await guest.getByRole("button", { name: "Sign in popup" }).click();
   const popup = await guestPage(`${base}/auth`);
-  await popup.getByRole("button", { name: "Finish sign in" }).click();
+  // The handler closes its own native tab. CDP may report that closure before
+  // acknowledging the click; verify the opener message and cookie below.
+  await popup
+    .getByRole("button", { name: "Finish sign in" })
+    .click({ noWaitAfter: true })
+    .catch((error) => {
+      if (!popup.isClosed() || !error.message.includes("has been closed"))
+        throw error;
+    });
   await guest.getByText("signed in", { exact: true }).waitFor();
   assert.ok(
     (await guest.evaluate(() => document.cookie)).includes("signed_in=yes"),
@@ -295,8 +321,13 @@ try {
       document.querySelector(".browser-panel").getBoundingClientRect().width ===
       innerWidth,
   );
-  await page.waitForTimeout(100);
-  assert.ok((await attached())[0].bounds.width > 1200);
+  const { surface: fullscreenSurface } = await waitGeometry();
+  assert.ok(
+    Math.abs((await attached())[0].bounds.width - fullscreenSurface.width) <= 1,
+  );
+  assert.ok(
+    fullscreenSurface.width > (await page.evaluate(() => innerWidth)) * 0.9,
+  );
   assert.equal((await attached())[0].id, originalId);
   // CDP keyboard events bypass Electron's native before-input-event hook.
   await app.evaluate(({ BrowserWindow, webContents }, id) => {
@@ -384,17 +415,24 @@ try {
     () => matchMedia("(prefers-color-scheme: light)").matches,
   );
   await menuAction("appearance-system");
+  await app.evaluate(({ webContents }, id) => {
+    const wc = webContents.fromId(id);
+    globalThis.devtoolsOpened = false;
+    wc.once("devtools-opened", () => {
+      globalThis.devtoolsOpened = true;
+    });
+  }, originalId);
   await menuAction("devtools");
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (
-      await app.evaluate(
-        ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),
-        originalId,
-      )
-    )
-      break;
-    await page.waitForTimeout(50);
+  const devtoolsDeadline = Date.now() + 15000;
+  while (Date.now() < devtoolsDeadline) {
+    if (await app.evaluate(() => globalThis.devtoolsOpened)) break;
+    await page.waitForTimeout(100);
   }
+  assert.equal(
+    await app.evaluate(() => globalThis.devtoolsOpened),
+    true,
+    "DevTools must finish opening",
+  );
   assert.equal(
     await app.evaluate(
       ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),

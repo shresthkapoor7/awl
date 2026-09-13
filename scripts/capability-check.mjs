@@ -18,7 +18,7 @@ const step = (
   value = null,
   input = null,
   output = null,
-) => ({ operation, selector, value, input, output });
+) => ({ operation, selector, target: null, value, input, output });
 const draft = {
   id: "lookup",
   name: "Look it up",

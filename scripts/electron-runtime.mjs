@@ -69,3 +69,15 @@ export async function prepareElectron() {
   }
   return executable;
 }
+
+// CI's Linux desktop has no hardware GPU. Keep this out of normal app launches.
+export function testElectronArgs(args) {
+  return process.platform === "linux" && process.env.CI
+    ? [
+        ...args,
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+      ]
+    : args;
+}

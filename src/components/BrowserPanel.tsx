@@ -36,6 +36,14 @@ export function BrowserPanel({
           <Globe2 size={15} />
           Browser
         </span>
+        {!agent.live.pending && (
+          <button
+            className="text-button"
+            onClick={() => void window.awlAgent?.takeover(agent.id)}
+          >
+            Take control
+          </button>
+        )}
         <IconButton
           label={
             expanded ? "Exit browser fullscreen" : "Enter browser fullscreen"

@@ -508,7 +508,19 @@ export function App() {
           />
         </Suspense>
       )}
-      {view === "capabilities" && <Capabilities />}
+      {view === "capabilities" && (
+        <Capabilities
+          onLaunch={(chat) => {
+            setAgents((current) =>
+              current.some((item) => item.id === chat.id)
+                ? current
+                : [...current, fromChat(chat)],
+            );
+            selectAgent(chat.id);
+            setBrowserOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }
