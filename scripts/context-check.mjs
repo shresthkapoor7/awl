@@ -222,6 +222,22 @@ try {
     publish: () => {},
   });
   await deleting.ready;
+  deleting.create("delete_retry");
+  await deleting.flush();
+  const removeRecord = deleting.store.remove.bind(deleting.store);
+  deleting.store.remove = async () => {
+    throw new Error("Simulated disk failure");
+  };
+  assert((await deleting.deleteSession("delete_retry")).error);
+  assert(deleting.list().some((chat) => chat.id === "delete_retry"));
+  assert.deepEqual(
+    removedBrowsers,
+    [],
+    "Do not destroy a browser when deleting its record fails",
+  );
+  deleting.store.remove = removeRecord;
+  assert.deepEqual(await deleting.deleteSession("delete_retry"), {});
+  assert.deepEqual(removedBrowsers.splice(0), ["delete_retry"]);
   deleting.create("delete_running");
   assert.deepEqual(
     deleting.send("delete_running", "Wait for cancellation"),
@@ -234,8 +250,15 @@ try {
     "Late work cannot recreate a deleted session",
   );
   assert.deepEqual(removedBrowsers, ["delete_running"]);
+  deleting.create("cleanup_failure");
+  deleting.options.browser.removeSession = async () => {
+    throw new Error("Simulated cache cleanup failure");
+  };
+  assert.deepEqual(await deleting.deleteSession("cleanup_failure"), {});
+  assert(!deleting.list().some((chat) => chat.id === "cleanup_failure"));
   await deleting.flush();
   const afterDeletion = await new WorkspaceStore(directory).load();
+  assert(!afterDeletion.some((item) => item.chat.id === "cleanup_failure"));
   assert(!afterDeletion.some((item) => item.chat.id === "delete_running"));
   assert(
     afterDeletion.some((item) => item.chat.id === "completed"),

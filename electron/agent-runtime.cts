@@ -405,16 +405,21 @@ export class AgentRuntime {
         return {
           error: "The agent is still stopping. Try deleting again in a moment.",
         };
-      this.recorders.get(id)?.close();
-      await this.options.browser.removeSession?.(id);
+      // Persistence is the commit point. A failed unlink must leave the live
+      // browser available so the user can retry or continue the session.
       await this.store?.remove(id);
+      const recorder = this.recorders.get(id);
       this.recorders.delete(id);
       this.executions.delete(id);
       this.sessions.delete(id);
       this.journal.remove(id);
       this.deleted.add(id);
+      recorder?.close();
+      await this.options.browser.removeSession?.(id);
       return {};
     } catch {
+      // Cleanup cannot resurrect a session whose durable deletion succeeded.
+      if (this.deleted.has(id)) return {};
       return { error: "Could not delete this session. Try again." };
     } finally {
       this.deleting.delete(id);
