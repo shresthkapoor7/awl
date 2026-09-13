@@ -996,3 +996,171 @@ strong {
 .request-choices button[aria-pressed="true"] {
   border-color: #777;
 }
+
+/* A small navigation gutter keeps turn markers clear of the conversation. */
+.conversation-timeline {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.conversation-timeline .conversation-scroll {
+  padding-left: 36px;
+  width: 100%;
+}
+.turn-rail {
+  position: absolute;
+  z-index: 3;
+  left: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  max-height: 70%;
+  display: flex;
+}
+.turn-markers {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: none;
+  max-height: 50vh;
+  width: 24px;
+}
+.turn-markers button {
+  flex: 0 0 16px;
+  width: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+}
+.turn-markers button span {
+  width: 9px;
+  height: 2px;
+  border-radius: 2px;
+  background: #444;
+  transition:
+    width 120ms,
+    background 120ms;
+}
+.turn-markers button:hover span,
+.turn-markers button:focus-visible span,
+.turn-markers button[aria-current] span {
+  width: 17px;
+  background: #ccc;
+}
+.turn-preview {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 30px;
+  width: min(290px, 55vw);
+  padding: 14px 16px;
+  border: 1px solid #333;
+  border-radius: 12px;
+  background: var(--base);
+  box-shadow: 0 8px 24px #0008;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.turn-preview strong,
+.turn-preview p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.turn-preview strong {
+  font-weight: 500;
+}
+.turn-preview p {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.run-history {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+}
+.run-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.run-history > summary::-webkit-details-marker {
+  display: none;
+}
+.history-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.history-chevron {
+  color: var(--muted);
+}
+.run-history[open] .history-chevron {
+  transform: rotate(90deg);
+}
+.history-body {
+  padding: 0 16px 16px;
+}
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0 14px;
+}
+.history-controls .icon-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+}
+.history-controls input[type="range"] {
+  appearance: none;
+  flex: 1;
+  min-width: 30px;
+  height: 3px;
+  border: 0;
+  border-radius: 3px;
+  background: #333;
+  margin: 0 12px;
+  padding: 0;
+}
+.history-controls input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ccc;
+  cursor: ew-resize;
+}
+.history-position {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.history-event {
+  border-left: 2px solid #444;
+  padding-left: 12px;
+}
+.history-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.history-event p {
+  margin: 6px 0 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.history-evidence {
+  margin-top: 12px;
+  color: var(--muted);
+}
