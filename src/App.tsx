@@ -447,14 +447,17 @@ export function App() {
           key={`conversation-${agent.id}`}
           agent={agent}
           onSend={send}
-          onOpenLink={(url) => {
+          onOpenLink={async (url) => {
             setBrowserOpen(true);
             setMobileView("browser");
-            void window.awlBrowser?.command({
+            if (!window.awlBrowser)
+              throw new Error("Open awl in Electron to browse links.");
+            const result = await window.awlBrowser.command({
               action: "navigate",
               agentId: agent.id,
               url,
             });
+            if (result.error) throw new Error(result.error);
           }}
           enabled={ready && !startupError}
           startupError={startupError}

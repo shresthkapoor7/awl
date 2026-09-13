@@ -148,6 +148,8 @@ try {
           "```",
           "",
           "[Unsafe](javascript:alert(1))",
+          "[Invalid port](https://example.invalid:99999/)",
+          "[Credential URL](https://fixture:fixture@example.invalid/)",
           "![Remote](https://example.invalid/pixel.png)",
           "<script>window.markdownExecuted = true</script>",
         ].join("\n"),
@@ -194,6 +196,21 @@ try {
     0,
   );
   assert.equal(await page.evaluate(() => window.markdownExecuted), undefined);
+  await markdown.getByRole("link", { name: "Invalid port" }).click();
+  await markdown.getByRole("alert").waitFor();
+  assert.ok((await markdown.getByRole("alert").textContent()).length > 0);
+  await markdown.getByRole("link", { name: "Credential URL" }).click();
+  await markdown.getByRole("alert").waitFor();
+  assert.ok((await markdown.getByRole("alert").textContent()).length > 0);
+  assert.equal(
+    (
+      await page.evaluate(
+        (agentId) => window.awlBrowser.command({ action: "get", agentId }),
+        chat.id,
+      )
+    ).state.tabs[0].url,
+    "about:blank",
+  );
   // Activity stays in the centered message column as the available width changes.
   const alignedActivity = async () => {
     const messageBox = await page.locator(".assistant-message").boundingBox();

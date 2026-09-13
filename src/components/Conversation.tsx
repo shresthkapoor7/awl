@@ -10,7 +10,7 @@ type Props = {
   startupError: string | null;
   onSend: (text: string) => Promise<boolean>;
   onStop: () => Promise<void>;
-  onOpenLink: (url: string) => void;
+  onOpenLink: (url: string) => Promise<void>;
 };
 export function Conversation({
   agent,
