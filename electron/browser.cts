@@ -17,6 +17,7 @@ import {
   readOnlyPolicy,
   BrowserPolicy,
 } from "./policy.cjs";
+import { attachPrivacy } from "./privacy.cjs";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { automationInput } from "./tools/page.cjs";
 import { randomUUID } from "node:crypto";
@@ -506,6 +507,7 @@ export function installBrowser(
     browser.active = tab.id;
     const wc = view.webContents;
     attachPolicy(wc, sessionPolicy(browser.id));
+    attachPrivacy(wc, browser.id);
     wc.on("before-input-event", (event, input) => {
       if (
         input.key === "Escape" &&

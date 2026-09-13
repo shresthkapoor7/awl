@@ -313,7 +313,7 @@ const writeTool = defineTool(
   async (draft, context) => {
     validateCapability(draft);
     try {
-      assertPublicArtifact(draft);
+      assertPublicArtifact(draft, context.agentId);
     } catch {
       throw new ToolError(
         "PRIVATE_ARTIFACT",

@@ -1,6 +1,29 @@
 import type { StoredSession } from "./workspace-store.cjs";
 import { redactDemonstration } from "../shared/recording.js";
-const knownPrivate = new Set<string>();
+import type { WebContents } from "electron";
+import { ToolError } from "./tools/core.cjs";
+type PrivateRegistry = {
+  values: Set<string>;
+  sorted?: string[];
+  saturated: boolean;
+};
+const registries = new Map<string, PrivateRegistry>();
+const browserSessions = new WeakMap<WebContents, string>();
+export function attachPrivacy(wc: WebContents, sessionId: string) {
+  browserSessions.set(wc, sessionId);
+}
+export function privacySession(wc: WebContents): string {
+  const id = browserSessions.get(wc);
+  if (!id)
+    throw new ToolError(
+      "PRIVACY_SESSION",
+      "Browser privacy session is unavailable.",
+    );
+  return id;
+}
+export function forgetPrivate(sessionId: string) {
+  registries.delete(sessionId);
+}
 const patterns = [
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
   /\b\d{3}-\d{2}-\d{4}\b/g,
@@ -9,23 +32,41 @@ const patterns = [
   /\b(?:sk-[a-zA-Z0-9_-]{12,}|Bearer\s+[a-zA-Z0-9._~-]+)\b/g,
   /\b(password|passwd|secret|api[_ -]?key|access[_ -]?token|otp)\s*[:=]\s*[^\s,;]+/gi,
 ];
-export function rememberPrivate(values: string[]) {
+export function rememberPrivate(values: string[], sessionId: string) {
+  let registry = registries.get(sessionId);
+  if (!registry) {
+    registry = { values: new Set(), saturated: false };
+    registries.set(sessionId, registry);
+  }
+  const limit = () =>
+    new ToolError(
+      "PRIVACY_LIMIT",
+      "This chat reached its privacy observation limit. Start a new chat to continue; other chats remain available.",
+    );
+  if (registry.saturated) throw limit();
   for (const value of values) {
     const normalized = value.trim();
-    if (normalized.length >= 3 && normalized.length <= 2000)
-      knownPrivate.add(normalized);
+    if (
+      normalized.length < 3 ||
+      normalized.length > 2000 ||
+      registry.values.has(normalized)
+    )
+      continue;
+    // Never evict live values or let one chat exhaust every session's budget.
+    if (registry.values.size >= 20000) {
+      registry.saturated = true;
+      throw limit();
+    }
+    registry.values.add(normalized);
+    registry.sorted = undefined;
   }
-  // Never evict known values and silently weaken the policy during a long session.
-  if (knownPrivate.size > 20000)
-    throw new Error(
-      "Privacy observation limit reached. Restart before continuing.",
-    );
 }
-export function redactText(value: string): string {
+export function redactText(value: string, sessionId: string): string {
   let result = value;
-  for (const privateValue of [...knownPrivate].sort(
-    (a, b) => b.length - a.length,
-  ))
+  const registry = registries.get(sessionId);
+  if (registry && !registry.sorted)
+    registry.sorted = [...registry.values].sort((a, b) => b.length - a.length);
+  for (const privateValue of registry?.sorted ?? [])
     result = result
       .split(privateValue)
       .join("[private]")
@@ -34,12 +75,12 @@ export function redactText(value: string): string {
   for (const pattern of patterns) result = result.replace(pattern, "[private]");
   return result;
 }
-export function redactData<T>(value: T): T {
+export function redactData<T>(value: T, sessionId: string): T {
   const walk = (item: unknown): unknown => {
     if (typeof item === "string")
       return item.startsWith("data:image/")
         ? "[image omitted]"
-        : redactText(item);
+        : redactText(item, sessionId);
     if (Array.isArray(item)) return item.map(walk);
     if (item && typeof item === "object")
       return Object.fromEntries(
@@ -51,17 +92,17 @@ export function redactData<T>(value: T): T {
   };
   return walk(value) as T;
 }
-export function assertPublicArtifact(value: unknown) {
+export function assertPublicArtifact(value: unknown, sessionId: string) {
   if (
     JSON.stringify(value).includes("[private]") ||
-    JSON.stringify(value) !== JSON.stringify(redactData(value))
+    JSON.stringify(value) !== JSON.stringify(redactData(value, sessionId))
   )
     throw new Error(
       "The capability contains private data. Replace private literals with input bindings and safe structural targets.",
     );
 }
 export function safeStoredSession(session: StoredSession): StoredSession {
-  const chat = redactData(structuredClone(session.chat));
+  const chat = redactData(structuredClone(session.chat), session.chat.id);
   if (chat.demonstration)
     chat.demonstration = redactDemonstration(chat.demonstration);
   if (chat.execution) {

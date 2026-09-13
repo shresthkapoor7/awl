@@ -374,13 +374,22 @@ try {
     publish: () => {},
   });
   await deleting.ready;
+  const {
+    rememberPrivate,
+    redactText,
+  } = require("../dist-electron/electron/privacy.cjs");
   deleting.create("delete_retry");
+  rememberPrivate(["Deletion private customer"], "delete_retry");
   await deleting.flush();
   const removeRecord = deleting.store.remove.bind(deleting.store);
   deleting.store.remove = async () => {
     throw new Error("Simulated disk failure");
   };
   assert((await deleting.deleteSession("delete_retry")).error);
+  assert.equal(
+    redactText("Deletion private customer", "delete_retry"),
+    "[private]",
+  );
   assert(deleting.list().some((chat) => chat.id === "delete_retry"));
   assert.deepEqual(
     removedBrowsers,
@@ -389,6 +398,10 @@ try {
   );
   deleting.store.remove = removeRecord;
   assert.deepEqual(await deleting.deleteSession("delete_retry"), {});
+  assert.equal(
+    redactText("Deletion private customer", "delete_retry"),
+    "Deletion private customer",
+  );
   assert.deepEqual(removedBrowsers.splice(0), ["delete_retry"]);
   deleting.create("delete_running");
   assert.deepEqual(
@@ -403,10 +416,15 @@ try {
   );
   assert.deepEqual(removedBrowsers, ["delete_running"]);
   deleting.create("cleanup_failure");
+  rememberPrivate(["Cleanup private customer"], "cleanup_failure");
   deleting.options.browser.removeSession = async () => {
     throw new Error("Simulated cache cleanup failure");
   };
   assert.deepEqual(await deleting.deleteSession("cleanup_failure"), {});
+  assert.equal(
+    redactText("Cleanup private customer", "cleanup_failure"),
+    "Cleanup private customer",
+  );
   assert(!deleting.list().some((chat) => chat.id === "cleanup_failure"));
   await deleting.flush();
   const afterDeletion = await new WorkspaceStore(directory).load();

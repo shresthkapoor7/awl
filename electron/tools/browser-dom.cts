@@ -168,28 +168,34 @@ export const browserDom = defineTool(
     );
     registerSnapshot(wc, frame.id, snapshotId);
     return {
-      data: redactData({
-        tab_id,
-        frame_id: frame.id,
-        url: observationURL(frame.url),
-        frames: frameList.map((frame) => ({
-          ...frame,
+      data: redactData(
+        {
+          tab_id,
+          frame_id: frame.id,
           url: observationURL(frame.url),
-        })),
-        ...data,
-        elements: data.elements.map((el) => ({
-          ...el,
-          target: el.target
-            ? {
-                ...el.target,
-                frame:
-                  frame.id === frameList[0].id
-                    ? null
-                    : { url: frameIdentity(frame.url), name: frame.name || "" },
-              }
-            : null,
-        })),
-      }),
+          frames: frameList.map((frame) => ({
+            ...frame,
+            url: observationURL(frame.url),
+          })),
+          ...data,
+          elements: data.elements.map((el) => ({
+            ...el,
+            target: el.target
+              ? {
+                  ...el.target,
+                  frame:
+                    frame.id === frameList[0].id
+                      ? null
+                      : {
+                          url: frameIdentity(frame.url),
+                          name: frame.name || "",
+                        },
+                }
+              : null,
+          })),
+        },
+        context.agentId,
+      ),
     };
   },
 );

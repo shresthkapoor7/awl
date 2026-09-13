@@ -1,4 +1,4 @@
-import { rememberPrivate, privatePageValues } from "../privacy.cjs";
+import { rememberPrivate, privatePageValues, privacySession } from "../privacy.cjs";
 import { policyFor } from "../policy.cjs";
 import type { WebContents } from "electron";
 import { ToolError, toolSignal } from "./core.cjs";
@@ -91,6 +91,7 @@ export async function observable(wc: WebContents) {
         privatePageValues,
         policyFor(wc)?.config.sensitiveSelectors ?? [],
       ),
+      privacySession(wc),
     );
   }
   return list;

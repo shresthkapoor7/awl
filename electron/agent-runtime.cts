@@ -1,5 +1,5 @@
 import { sessionSettingsSchema } from "../shared/session-settings.js";
-import { redactText } from "./privacy.cjs";
+import { redactText, forgetPrivate } from "./privacy.cjs";
 import { captureFailure } from "./evidence.cjs";
 import { browserWait } from "./tools/browser-wait.cjs";
 import { toolSignal as observationScope, abortable } from "./tools/core.cjs";
@@ -436,7 +436,7 @@ export class AgentRuntime {
           id,
           "human",
           "resume",
-          `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page")}`,
+          `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
         );
         session.chat.pending = null;
         session.chat.status = "running";
@@ -453,7 +453,7 @@ export class AgentRuntime {
         id,
         "human",
         "resume",
-        `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page")}`,
+        `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
       );
       session.chat.pending = null;
       session.controller = null;
@@ -532,6 +532,7 @@ export class AgentRuntime {
       if (this.deleted.has(id)) return {};
       return { error: "Could not delete this session. Try again." };
     } finally {
+      if (this.deleted.has(id)) forgetPrivate(id);
       this.deleting.delete(id);
       if (this.sessions.has(id)) this.publish(session);
     }
@@ -1162,7 +1163,7 @@ export class AgentRuntime {
             return;
           if (
             !result.ok &&
-            ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION"].includes(
+            ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION", "PRIVACY_LIMIT"].includes(
               result.error.code,
             )
           ) {

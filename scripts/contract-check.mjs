@@ -67,21 +67,54 @@ assert.throws(
 
 const {
   rememberPrivate,
+  forgetPrivate,
+  redactText,
   redactData,
   assertPublicArtifact,
   safeStoredSession,
 } = require("../dist-electron/electron/privacy.cjs");
-rememberPrivate(["Avery Testperson", "42 Example Lane"]);
+rememberPrivate(["Avery Testperson", "42 Example Lane"], "private-check");
 assert.deepEqual(
-  redactData({
-    name: "Avery Testperson",
-    email: "avery@example.test",
-    image: "data:image/png;base64,abc",
-  }),
+  redactData(
+    {
+      name: "Avery Testperson",
+      email: "avery@example.test",
+      image: "data:image/png;base64,abc",
+    },
+    "private-check",
+  ),
   { name: "[private]", email: "[private]" },
 );
-assert.throws(() => assertPublicArtifact({ target: "Avery Testperson" }));
-assertPublicArtifact({ target: "{{member_id}}" });
+assert.throws(() =>
+  assertPublicArtifact({ target: "Avery Testperson" }, "private-check"),
+);
+assertPublicArtifact({ target: "{{member_id}}" }, "private-check");
+assert.equal(redactText("Avery Testperson", "other-chat"), "Avery Testperson");
+assertPublicArtifact({ target: "Avery Testperson" }, "other-chat");
+assert.throws(
+  () =>
+    rememberPrivate(
+      Array.from({ length: 20001 }, (_, i) => `Private customer ${i}`),
+      "full-chat",
+    ),
+  (error) => error.code === "PRIVACY_LIMIT",
+);
+assert.throws(
+  () => rememberPrivate([], "full-chat"),
+  (error) => error.code === "PRIVACY_LIMIT",
+);
+rememberPrivate(["Healthy customer"], "healthy-chat");
+assert.equal(redactText("Healthy customer", "healthy-chat"), "[private]");
+assert.equal(redactText("Private customer 0", "full-chat"), "[private]");
+forgetPrivate("full-chat");
+rememberPrivate(["Fresh customer"], "full-chat");
+assert.equal(
+  redactText("Private customer 0", "full-chat"),
+  "Private customer 0",
+);
+assert.equal(redactText("Fresh customer", "full-chat"), "[private]");
+forgetPrivate("full-chat");
+forgetPrivate("healthy-chat");
 const safe = safeStoredSession({
   chat: {
     id: "private-check",
@@ -112,6 +145,8 @@ assert.ok(!JSON.stringify(safe).includes("unknown private text"));
 assert.ok(!JSON.stringify(safe).includes("uninspectable"));
 assert.ok(!JSON.stringify(safe).includes("avery@example.test"));
 assert.equal(safe.history[0].content, "Email [private]");
+assert.equal(safe.chat.name, "Find [private]");
+forgetPrivate("private-check");
 
 const { readOnlyPolicy } = require("../dist-electron/electron/policy.cjs");
 const readOnly = readOnlyPolicy(policy);
