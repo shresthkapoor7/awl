@@ -393,17 +393,24 @@ try {
     () => matchMedia("(prefers-color-scheme: light)").matches,
   );
   await menuAction("appearance-system");
+  await app.evaluate(({ webContents }, id) => {
+    const wc = webContents.fromId(id);
+    globalThis.devtoolsOpened = false;
+    wc.once("devtools-opened", () => {
+      globalThis.devtoolsOpened = true;
+    });
+  }, originalId);
   await menuAction("devtools");
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (
-      await app.evaluate(
-        ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),
-        originalId,
-      )
-    )
-      break;
-    await page.waitForTimeout(50);
+  const devtoolsDeadline = Date.now() + 15000;
+  while (Date.now() < devtoolsDeadline) {
+    if (await app.evaluate(() => globalThis.devtoolsOpened)) break;
+    await page.waitForTimeout(100);
   }
+  assert.equal(
+    await app.evaluate(() => globalThis.devtoolsOpened),
+    true,
+    "DevTools must finish opening",
+  );
   assert.equal(
     await app.evaluate(
       ({ webContents }, id) => webContents.fromId(id).isDevToolsOpened(),
