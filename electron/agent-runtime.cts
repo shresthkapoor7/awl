@@ -579,7 +579,9 @@ export class AgentRuntime {
         session.chat.messages.push({
           id: randomUUID(),
           role: "assistant",
-          text: `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
+          text: execution.state.result?.kind === "business_outcome"
+            ? `${execution.state.result.code}: ${execution.state.result.message}`
+            : `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
             execution.state.outputs,
           )
             .map(([key, value]) => `${key}: ${value}`)

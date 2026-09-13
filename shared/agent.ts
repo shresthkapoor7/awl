@@ -45,6 +45,7 @@ export type CapabilityRef = {
   version: number;
 };
 export type ExecutionState = CapabilityRef & {
+  result?: import("./execution.js").ExecutionResult | null;
   step: number;
   total: number;
   status: "running" | "paused" | "completed";

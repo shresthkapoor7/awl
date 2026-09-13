@@ -40,7 +40,7 @@ export const legacyCapabilitySchema = z.strictObject({
     .max(60),
   on_unknown_state: z.literal("pause_for_human"),
 });
-export const capabilitySchema = legacyCapabilitySchema.extend({
+export const capabilityV2Schema = legacyCapabilitySchema.extend({
   steps: z
     .array(
       legacyCapabilitySchema.shape.steps.element.extend({
@@ -50,7 +50,36 @@ export const capabilitySchema = legacyCapabilitySchema.extend({
     .min(2)
     .max(60),
 });
-export type CapabilityDraft = z.infer<typeof capabilitySchema>;
+const handlerSchema = z.strictObject({
+  id: name,
+  before_step: z.number().int().min(0).max(59),
+  when: targetSchema,
+  text: z.string().min(1).max(500),
+  disposition: z.enum(["outcome", "recover", "failure"]),
+  message: z.string().min(1).max(500),
+  // Recovery acknowledges a known state, then re-observes the current step.
+  // It never blindly repeats the previous input or write.
+  action: z.enum(["click", "press", "wait"]).nullable(),
+  target: targetSchema.nullable(),
+  key: z.enum(["Enter", "Escape"]).nullable(),
+  attempts: z.number().int().min(1).max(3),
+  wait_ms: z.number().int().min(100).max(5000),
+});
+export const capabilitySchema = capabilityV2Schema.extend({
+  handlers: z.array(handlerSchema).max(20).nullable(),
+});
+export type CapabilityDraft = z.infer<typeof capabilityV2Schema> & {
+  handlers?: z.infer<typeof handlerSchema>[] | null;
+};
+export function parseCapability(version: number, raw: unknown): CapabilityDraft {
+  if (version === 1) {
+    const old = legacyCapabilitySchema.parse(raw);
+    return { ...old, steps: old.steps.map((step) => ({ ...step, target: null })), handlers: [] };
+  }
+  if (version === 2) return { ...capabilityV2Schema.parse(raw), handlers: [] };
+  if (version === 3) return capabilitySchema.parse(raw);
+  throw new ToolError("UNSUPPORTED_SCHEMA", "Unsupported capability schema.");
+}
 export function validateCapability(draft: CapabilityDraft) {
   let origin: URL;
   try {
@@ -87,6 +116,19 @@ export function validateCapability(draft: CapabilityDraft) {
       "INVALID_CAPABILITY",
       "Credentials and authentication values do not belong in capabilities.",
     );
+  const handlerIds = new Set<string>();
+  for (const handler of draft.handlers ?? []) {
+    if (handlerIds.has(handler.id) || handler.before_step >= draft.steps.length)
+      throw new ToolError("INVALID_CAPABILITY", "Handler IDs must be unique and reference an existing step.");
+    handlerIds.add(handler.id);
+    if (handler.disposition === "recover") {
+      if (!handler.action || (handler.action !== "wait" && !handler.target) ||
+          (handler.action === "wait" && handler.target) ||
+          (handler.action === "press" ? !handler.key : handler.key !== null))
+        throw new ToolError("INVALID_CAPABILITY", "Recovery needs a bounded wait or an observed click/key target.");
+    } else if (handler.action || handler.target || handler.key)
+      throw new ToolError("INVALID_CAPABILITY", "Terminal outcomes cannot dispatch recovery actions.");
+  }
   const assigned = new Set<string>();
   for (const step of draft.steps) {
     if (step.input && !inputs.has(step.input))
@@ -201,9 +243,9 @@ export function validateCapability(draft: CapabilityDraft) {
       "extract_text currently produces string outputs only.",
     );
 }
-export const capabilityWrite = defineTool(
+const writeTool = defineTool(
   "capability_write",
-  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, observed target descriptions from browser_dom, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Use each observed target object including its frame and shadow scope. Set selector=null when providing target; keep target=null for navigation. CSS selectors are supported as a main-document fallback. Credentials must never be recorded. This saves a validated draft, not an executable or replay-validated workflow.",
+  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, observed target descriptions from browser_dom, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Use each observed target object including its frame and shadow scope. Set selector=null when providing target; keep target=null for navigation. CSS selectors are supported as a main-document fallback. Credentials must never be recorded. handlers is an array (or null) of observed exceptional states, scoped by zero-based before_step. Each has an observed when target and visible text, disposition outcome/recover/failure, stable id and message. Recovery may click/press a known control or wait, with at most three attempts; never repeat an uncertain write. Set unused action/target/key to null. Do not invent unobserved recovery branches. This saves a draft, not a replay-validated workflow.",
   capabilitySchema,
   async (draft, context) => {
     validateCapability(draft);
@@ -227,7 +269,7 @@ export const capabilityWrite = defineTool(
       );
     const version = current + 1;
     const artifact = {
-      schema_version: 2,
+      schema_version: 3,
       ...draft,
       version,
       status: "draft",
@@ -263,3 +305,11 @@ export const capabilityWrite = defineTool(
     };
   },
 );
+
+// Older in-process callers remain compatible; the advertised model schema is v3.
+export const capabilityWrite = {
+  ...writeTool,
+  execute: (args: unknown, context: Parameters<typeof writeTool.execute>[1]) =>
+    writeTool.execute(args && typeof args === "object" && !("handlers" in args)
+      ? { ...args, handlers: [] } : args, context),
+};

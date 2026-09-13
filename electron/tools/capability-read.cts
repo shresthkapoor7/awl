@@ -3,8 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { defineTool, ToolError } from "./core.cjs";
 import {
-  capabilitySchema,
-  legacyCapabilitySchema,
+  parseCapability,
 } from "./capability-write.cjs";
 export const capabilityRead = defineTool(
   "capability_read",
@@ -79,14 +78,12 @@ export const capabilityRead = defineTool(
       created_at,
       ...draft
     } = artifact;
-    if (![1, 2].includes(schema_version))
+    if (![1, 2, 3].includes(schema_version))
       throw new ToolError(
         "UNSUPPORTED_SCHEMA",
         "Unsupported capability schema.",
       );
-    (schema_version === 1 ? legacyCapabilitySchema : capabilitySchema).parse(
-      draft,
-    );
+    parseCapability(schema_version, draft);
     return {
       data: {
         ...draft,

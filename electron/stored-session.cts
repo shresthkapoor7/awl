@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { executionResultSchema } from "../shared/execution.js";
 import { targetSchema } from "../shared/target.js";
 import type { StoredSession } from "./workspace-store.cjs";
 
@@ -146,6 +147,7 @@ const storedSession = z.object({
         outputs: z.record(z.string(), z.string()),
         error: z.string().nullable(),
         uncertain: z.boolean(),
+        result: executionResultSchema.nullable().optional(),
       })
       .refine((run) => run.step <= run.total)
       .optional(),
