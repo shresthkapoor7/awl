@@ -11,7 +11,12 @@ import {
   type WebContents,
   type WebPreferences,
 } from "electron";
-import { attachPolicy, loadPolicy, type BrowserPolicy } from "./policy.cjs";
+import {
+  attachPolicy,
+  loadPolicy,
+  readOnlyPolicy,
+  type BrowserPolicy,
+} from "./policy.cjs";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { automationInput } from "./tools/page.cjs";
 import { randomUUID } from "node:crypto";
@@ -77,6 +82,8 @@ export function installBrowser(
   window: BrowserWindow,
   policy: BrowserPolicy = loadPolicy(),
 ): BrowserAccess {
+  const access = new Map<string, BrowserPolicy>();
+  const sessionPolicy = (id: string) => access.get(id) ?? policy;
   const owners = new Map<string, "human" | "agent">();
   let humanInput: ((id: string) => void) | undefined;
   const interruptHumanInput = (id: string) => {
@@ -498,7 +505,7 @@ export function installBrowser(
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
-    attachPolicy(wc, policy);
+    attachPolicy(wc, sessionPolicy(browser.id));
     wc.on("before-input-event", (event, input) => {
       if (
         input.key === "Escape" &&
@@ -831,6 +838,13 @@ export function installBrowser(
     onHumanInput: (handler) => {
       humanInput = handler;
     },
+    setAccess: (id, value) => {
+      if (deleted.has(id)) return;
+      if (value === "read_only") access.set(id, readOnlyPolicy(policy));
+      else access.delete(id);
+      for (const tab of browsers.get(id)?.tabs ?? [])
+        attachPolicy(tab.view.webContents, sessionPolicy(id));
+    },
     setOwner: (id, owner) => {
       if (!deleted.has(id)) owners.set(id, owner);
     },
@@ -838,6 +852,7 @@ export function installBrowser(
       const browser = browsers.get(id);
       deleted.add(id);
       owners.delete(id);
+      access.delete(id);
       if (!browser) return;
       if (presentation?.agentId === id) {
         presentation = null;
@@ -878,8 +893,8 @@ export function installBrowser(
         );
       }
       signal.throwIfAborted();
-      policy.assertType("navigate");
-      policy.assertDestination(url);
+      sessionPolicy(agentId).assertType("navigate");
+      sessionPolicy(agentId).assertDestination(url);
       const browser = getBrowser(agentId);
       const tab = tabId
         ? target(agentId, tabId)

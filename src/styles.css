@@ -1164,3 +1164,192 @@ strong {
   margin-top: 12px;
   color: var(--muted);
 }
+
+.composer {
+  padding: 14px 12px 10px;
+  border-radius: 16px;
+  border-color: #303030;
+  transition: border-color 150ms;
+}
+.composer textarea {
+  font-size: 13px;
+  min-height: 60px;
+  padding: 2px 4px 10px;
+}
+.composer-bottom {
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+}
+.composer .send-button {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #333;
+}
+.composer .send-button:not(:disabled) {
+  background: #d4d4d4;
+  color: #0a0a0a;
+}
+.chat-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  position: relative;
+  min-width: 0;
+}
+.composer-menu {
+  position: relative;
+  min-width: 0;
+}
+.composer-menu > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.composer-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.composer-menu > summary span {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-menu > summary:hover,
+.composer-menu[open] > summary {
+  color: var(--text);
+  background: var(--hover);
+}
+.composer-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 10;
+  width: min(280px, 65vw);
+  padding: 14px;
+  border: 1px solid #333;
+  border-radius: 12px;
+  background: var(--base);
+  box-shadow: 0 12px 32px #0008;
+  font-size: 12px;
+}
+.composer-popover label,
+.popover-heading {
+  display: block;
+  font-weight: 500;
+}
+.composer-popover p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.composer-popover p:last-child {
+  margin-bottom: 0;
+}
+.model-default {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.model-default span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.model-entry {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.model-entry input {
+  min-width: 0;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: var(--base);
+}
+.model-entry button {
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+.access-popover {
+  left: auto;
+  right: 0;
+}
+.access-popover > button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 8px;
+  margin-top: 6px;
+  border-radius: 7px;
+}
+.access-popover > button:hover {
+  background: var(--hover);
+}
+.access-popover > button strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.access-popover > button > span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.setting-selected {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.settings-error {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 11;
+  display: flex;
+  gap: 12px;
+  width: 280px;
+  max-width: 60vw;
+  padding: 12px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: var(--base);
+  font-size: 12px;
+}
+.settings-error button {
+  margin-left: auto;
+  align-self: flex-start;
+}
+/* Anchor both menus to the toolbar so wrapping never pushes a menu off-panel. */
+.composer-menu {
+  position: static;
+}
+.composer-popover,
+.access-popover {
+  left: 0;
+  right: auto;
+  max-height: calc(100dvh - 240px);
+  overflow-y: auto;
+}

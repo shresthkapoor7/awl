@@ -112,3 +112,21 @@ assert.ok(!JSON.stringify(safe).includes("unknown private text"));
 assert.ok(!JSON.stringify(safe).includes("uninspectable"));
 assert.ok(!JSON.stringify(safe).includes("avery@example.test"));
 assert.equal(safe.history[0].content, "Email [private]");
+
+const { readOnlyPolicy } = require("../dist-electron/electron/policy.cjs");
+const readOnly = readOnlyPolicy(policy);
+readOnly.assertDestination("https://example.com/work/inquiry");
+readOnly.assertType("navigate");
+assert.throws(() => readOnly.assertDestination("https://elsewhere.test/"));
+for (const action of ["click", "fill", "select", "press"])
+  assert.throws(
+    () => readOnly.assertAction(action, "Enter", { ...facts, allowed: true }),
+    /not permitted/,
+  );
+assert.throws(
+  () => readOnly.assertType("scroll"),
+  /not permitted/,
+  "read-only cannot broaden the base policy",
+);
+policy.assertAction("click", null, { ...facts, allowed: true });
+console.log("Read-only browser policy preserves configured restrictions");

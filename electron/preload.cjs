@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("awlAgent", {
+  configure: (id, settings) =>
+    ipcRenderer.invoke("agent:configure", { id, settings }),
   state: () => ipcRenderer.invoke("agent:state"),
   create: (id) => ipcRenderer.invoke("agent:create", id),
   deleteSession: (id) => ipcRenderer.invoke("agent:delete-session", id),

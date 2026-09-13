@@ -422,6 +422,34 @@ try {
     "old query",
     "named target survives regenerated IDs",
   );
+  await app.evaluate(() =>
+    globalThis.awlToolsTest.browser.setAccess("test", "read_only"),
+  );
+  assert.equal(
+    (await fieldAction("Search", "fill", "blocked")).error.code,
+    "POLICY_DENIED",
+  );
+  assert.equal(
+    (await fieldAction("Search", "press", "Enter")).error.code,
+    "POLICY_DENIED",
+  );
+  assert.equal(
+    (await resolve(queryTarget)).inputValue,
+    "old query",
+    "read-only blocks typing before touching the field",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
+  assert.equal(
+    (await fieldAction("Search", "fill", "still blocked")).error.code,
+    "POLICY_DENIED",
+  );
+  await app.evaluate(() =>
+    globalThis.awlToolsTest.browser.setAccess("test", "configured"),
+  );
+  assert.equal((await fieldAction("Search", "fill", "allowed again")).ok, true);
   assert.equal(
     await app.evaluate(() => globalThis.nativeInterruptions),
     0,

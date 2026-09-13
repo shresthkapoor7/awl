@@ -1,3 +1,4 @@
+import { sessionSettingsSchema } from "../shared/session-settings.js";
 import { redactText } from "./privacy.cjs";
 import { captureFailure } from "./evidence.cjs";
 import { browserWait } from "./tools/browser-wait.cjs";
@@ -87,6 +88,11 @@ export class AgentRuntime {
     for (const saved of (await this.store?.load()) ?? []) {
       try {
         const chat = saved.chat;
+        chat.settings ??= {
+          model: this.options.model ?? TERRA_MODEL,
+          access: "configured",
+        };
+        this.options.browser.setAccess?.(chat.id, chat.settings.access);
         chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
         this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
         chat.control = {
@@ -183,6 +189,10 @@ export class AgentRuntime {
             this.lastCreatedAt + 1,
           )),
           name: "New agent",
+          settings: {
+            model: this.options.model ?? TERRA_MODEL,
+            access: "configured",
+          },
           status: "idle",
           messages: [],
           tools: [],
@@ -197,6 +207,51 @@ export class AgentRuntime {
       this.publish(session);
     }
     return structuredClone(session.chat);
+  }
+  configure(id: string, raw: unknown): { error?: string } {
+    const session = this.sessions.get(id);
+    if (!session || this.deleting.has(id) || this.deleted.has(id))
+      return { error: "Session not found." };
+    if (
+      session.controller ||
+      this.recordingRequests.has(id) ||
+      this.repairing.has(id) ||
+      session.chat.demonstration?.mode === "recording"
+    )
+      return {
+        error: "Stop the current run or recording before changing settings.",
+      };
+    const parsed = sessionSettingsSchema.safeParse(raw);
+    if (!parsed.success)
+      return { error: "Choose a valid model ID and access mode." };
+    if (parsed.data.access === "read_only" && !this.options.browser.setAccess)
+      return { error: "This browser does not support access controls." };
+    const previousModel =
+      session.chat.settings?.model ?? this.options.model ?? TERRA_MODEL;
+    this.options.browser.setAccess?.(id, parsed.data.access);
+    if (parsed.data.model !== previousModel) {
+      // Opaque reasoning/compaction items belong to the model that produced them.
+      // Rebuild a portable transcript; require fresh browser observations.
+      session.history = session.chat.messages.map((message) => ({
+        role: message.role,
+        content: message.text,
+      }));
+      session.history.push({
+        role: "developer",
+        content:
+          "The model changed. The transcript is retained, but previous tool state is unavailable. Inspect the current browser before acting. Do not repeat completed writes.",
+      });
+      session.chat.contextTokens = undefined;
+    }
+    session.chat.settings = parsed.data;
+    this.journal.add(
+      id,
+      "human",
+      "settings",
+      `Model: ${parsed.data.model} · Access: ${parsed.data.access === "read_only" ? "Read only" : "Configured access"}`,
+    );
+    this.publish(session);
+    return {};
   }
   send(id: string, text: string): { error?: string } {
     if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
@@ -618,6 +673,7 @@ export class AgentRuntime {
         session.chat.messages.push({
           id: randomUUID(),
           role: "assistant",
+          model: "Capability",
           text:
             execution.state.result?.kind === "business_outcome"
               ? `${execution.state.result.code}: ${execution.state.result.message}`
@@ -877,6 +933,13 @@ export class AgentRuntime {
     for (const session of this.sessions.values()) session.controller?.abort();
   }
   private async run(session: Session) {
+    const model =
+      session.chat.settings?.model ?? this.options.model ?? TERRA_MODEL;
+    const runInstructions =
+      instructions +
+      (session.chat.settings?.access === "read_only"
+        ? "\nThis chat is in read-only browser mode. You may inspect, navigate within the configured destinations, and scroll. Click, fill, select, and key actions are disabled. Explain when a task needs those actions; only the human can change access."
+        : "");
     const controller = session.controller!;
     const signal = AbortSignal.any([
       controller.signal,
@@ -891,8 +954,8 @@ export class AgentRuntime {
         const context = await budgetContext(
           this.options.client!.responses,
           session.history,
-          this.options.model ?? TERRA_MODEL,
-          instructions,
+          model,
+          runInstructions,
           tools.map(toolDefinition),
           signal,
         );
@@ -908,8 +971,8 @@ export class AgentRuntime {
           );
         const response = await this.options.client!.responses.create(
           {
-            model: this.options.model ?? TERRA_MODEL,
-            instructions,
+            model,
+            instructions: runInstructions,
             input: session.history,
             tools: tools.map(toolDefinition),
             parallel_tool_calls: false,
@@ -936,6 +999,7 @@ export class AgentRuntime {
           session.chat.messages.push({
             id: randomUUID(),
             role: "assistant",
+            model,
             text: response.output_text,
           });
           this.publish(session);
@@ -976,6 +1040,7 @@ export class AgentRuntime {
                   session.chat.messages.push({
                     id: randomUUID(),
                     role: "assistant",
+                    model,
                     text: summary,
                   });
                 },
@@ -1092,6 +1157,7 @@ export class AgentRuntime {
             session.chat.messages.push({
               id: randomUUID(),
               role: "assistant",
+              model,
               text: result.error.message,
             });
             this.question(session, {

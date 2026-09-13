@@ -1,3 +1,4 @@
+import { ChatSettings } from "./ChatSettings";
 import { TurnRail } from "./TurnRail";
 import { RunHistory } from "./RunHistory";
 import { Demonstration } from "./Demonstration";
@@ -28,6 +29,14 @@ export function Conversation({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(160, Math.max(60, field.scrollHeight))}px`;
+  }, [draft]);
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
@@ -56,7 +65,14 @@ export function Conversation({
   }, [agent.messages.length, agent.live.tools.length]);
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim() || busy || sending || !enabled || agent.live.pending)
+    if (
+      !draft.trim() ||
+      busy ||
+      sending ||
+      savingSettings ||
+      !enabled ||
+      agent.live.pending
+    )
       return;
     const text = draft;
     followLatest.current = true;
@@ -150,7 +166,8 @@ export function Conversation({
                 </strong>
                 {message.role === "assistant" && (
                   <span>
-                    {agent.live.mode === "execution" ? "Capability" : model}
+                    {message.model ??
+                      (agent.live.mode === "execution" ? "Capability" : model)}
                   </span>
                 )}
               </div>
@@ -227,6 +244,7 @@ export function Conversation({
             Message your agent
           </label>
           <textarea
+            ref={input}
             id="message"
             placeholder="What do you want to get done?"
             value={draft}
@@ -244,6 +262,17 @@ export function Conversation({
             }}
           />
           <div className="composer-bottom">
+            <ChatSettings
+              chat={agent.live}
+              defaultModel={model}
+              disabled={
+                !enabled ||
+                busy ||
+                sending ||
+                agent.live.demonstration?.mode === "recording"
+              }
+              onSaving={setSavingSettings}
+            />
             {busy ? (
               <button
                 className="send-button stop-agent-icon"
@@ -261,7 +290,11 @@ export function Conversation({
                 type="submit"
                 aria-label="Send message"
                 disabled={
-                  !draft.trim() || sending || !enabled || !!agent.live.pending
+                  !draft.trim() ||
+                  sending ||
+                  savingSettings ||
+                  !enabled ||
+                  !!agent.live.pending
                 }
               >
                 <ArrowUp size={18} />

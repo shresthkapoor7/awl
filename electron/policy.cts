@@ -128,6 +128,16 @@ export class BrowserPolicy {
       );
   }
 }
+// A per-chat restriction can narrow the configured policy, never broaden it.
+export function readOnlyPolicy(policy: BrowserPolicy) {
+  return new BrowserPolicy({
+    ...policy.config,
+    actions: policy.config.actions.filter(
+      (action) => action === "navigate" || action === "scroll",
+    ),
+    safeControls: [],
+  });
+}
 const attached = new WeakMap<WebContents, BrowserPolicy>();
 export function attachPolicy(wc: WebContents, policy: BrowserPolicy) {
   attached.set(wc, policy);

@@ -51,6 +51,13 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     await runtime.ready;
     return { enabled, model, chats: runtime.list() };
   });
+  ipcMain.handle("agent:configure", async (event, input) => {
+    authorize(event);
+    await runtime.ready;
+    if (!input || typeof input.id !== "string")
+      return { error: "Invalid chat." };
+    return runtime.configure(input.id, input.settings);
+  });
   ipcMain.handle("agent:create", async (event, id) => {
     authorize(event);
     await runtime.ready;
@@ -193,6 +200,7 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     for (const name of [
       "agent:state",
       "agent:create",
+      "agent:configure",
       "agent:delete-session",
       "agent:delete-capability",
       "agent:capabilities",

@@ -13,7 +13,9 @@ npm ci
 npm run dev
 ```
 
-Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The key stays in the main process. Validating and running saved capabilities does not require an API key.
+Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The composer lets you select a model per chat; other model IDs must support images, reasoning, and tools and be available to your API key. The key stays in the main process. Validating and running saved capabilities does not require an API key.
+
+The composer also offers **Configured access** and **Read only** browser modes. Read only allows inspection, navigation, and scrolling within the configured policy; automated clicks, typing, selections, and key presses are blocked. Manual browsing remains under your control. Settings persist per chat and can be changed while the agent is stopped.
 
 Renderer edits reload during development. Restart `npm run dev` after changing Electron or preload code. `npm start` builds and launches the app; `npm run dev:web` previews only the renderer. On macOS, the launcher prepares a cached awl.app with its own menu-bar and Dock identity.
 

@@ -1,3 +1,4 @@
+import { sessionSettingsSchema } from "../shared/session-settings.js";
 import { z } from "zod";
 import { safeEvidenceSchema } from "../shared/evidence.js";
 import { executionResultSchema } from "../shared/execution.js";
@@ -63,6 +64,7 @@ const storedSession = z.object({
   version: z.literal(1),
   chat: z.looseObject({
     id: sessionId,
+    settings: sessionSettingsSchema.optional(),
     createdAt: z.number().nonnegative().optional(),
     name: z.string(),
     status: z.enum([
@@ -75,7 +77,12 @@ const storedSession = z.object({
     ]),
     error: z.string().nullable(),
     messages: z.array(
-      z.object({ id, role: z.enum(["user", "assistant"]), text: z.string() }),
+      z.object({
+        id,
+        role: z.enum(["user", "assistant"]),
+        text: z.string(),
+        model: z.string().max(160).optional(),
+      }),
     ),
     tools: z.array(
       z.object({
