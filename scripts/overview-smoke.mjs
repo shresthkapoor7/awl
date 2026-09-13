@@ -15,7 +15,8 @@ try {
   await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     window.webContents.setBackgroundThrottling(false);
-    window.hide();
+    if (process.env.CI) window.show();
+    else window.hide();
   });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));

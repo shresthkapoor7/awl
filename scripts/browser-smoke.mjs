@@ -59,7 +59,8 @@ try {
     if (process.platform === "darwin") app.setActivationPolicy("accessory");
     const window = BrowserWindow.getAllWindows()[0];
     window.removeAllListeners("ready-to-show");
-    window.hide();
+    if (process.env.CI) window.show();
+    else window.hide();
     window.webContents.setBackgroundThrottling(false);
   });
   const address = page.getByRole("textbox", { name: "Website address" });
