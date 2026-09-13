@@ -233,7 +233,15 @@ try {
   // Native popup relationships survive inside tabs (including auth postMessage).
   await guest.getByRole("button", { name: "Sign in popup" }).click();
   const popup = await guestPage(`${base}/auth`);
-  await popup.getByRole("button", { name: "Finish sign in" }).click();
+  // The handler closes its own native tab. CDP may report that closure before
+  // acknowledging the click; verify the opener message and cookie below.
+  await popup
+    .getByRole("button", { name: "Finish sign in" })
+    .click({ noWaitAfter: true })
+    .catch((error) => {
+      if (!popup.isClosed() || !error.message.includes("has been closed"))
+        throw error;
+    });
   await guest.getByText("signed in", { exact: true }).waitFor();
   assert.ok(
     (await guest.evaluate(() => document.cookie)).includes("signed_in=yes"),
