@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AgentChat } from "../shared/agent.js";
 import type { ResponseInput } from "openai/resources/responses/responses";
+import { parseStoredSession } from "./stored-session.cjs";
 export type StoredSession = { chat: AgentChat; history: ResponseInput };
 export class WorkspaceStore {
   private pending = Promise.resolve();
@@ -20,24 +21,16 @@ export class WorkspaceStore {
     const sessions: StoredSession[] = [];
     for (const file of files
       .filter((file) => /^[a-zA-Z0-9_-]{1,80}\.json$/.test(file))
-      .slice(0, 32)) {
+      .sort()) {
+      if (sessions.length >= 32) break;
       try {
         const path = join(this.root, file);
         const info = await lstat(path);
         if (!info.isFile() || info.size > 16_000_000) continue;
-        const value = JSON.parse(await readFile(path, "utf8"));
-        if (
-          value.version !== 1 ||
-          value.chat?.id !== file.slice(0, -5) ||
-          !Array.isArray(value.chat.messages) ||
-          !Array.isArray(value.chat.tools) ||
-          !Array.isArray(value.history)
-        )
-          continue;
-        const saved = {
-          chat: value.chat,
-          history: value.history,
-        } as StoredSession;
+        const saved = parseStoredSession(
+          JSON.parse(await readFile(path, "utf8")),
+        );
+        if (!saved || saved.chat.id !== file.slice(0, -5)) continue;
         if (
           !Number.isFinite(saved.chat.createdAt) ||
           saved.chat.createdAt! <= 0

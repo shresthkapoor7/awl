@@ -81,46 +81,51 @@ export class AgentRuntime {
   }
   private async restore() {
     for (const saved of (await this.store?.load()) ?? []) {
-      const chat = saved.chat;
-      chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
-      this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
-      chat.control = {
-        owner: "human",
-        capture: "private",
-        generation: (chat.control?.generation ?? 0) + 1,
-      };
-      if (chat.status === "running") chat.status = "stopped";
-      if (chat.demonstration) {
-        chat.demonstration.mode = "review";
-        chat.demonstration.notice =
-          "Restored evidence. The browser session was not restored.";
+      try {
+        const chat = saved.chat;
+        chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
+        this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
+        chat.control = {
+          owner: "human",
+          capture: "private",
+          generation: (chat.control?.generation ?? 0) + 1,
+        };
+        if (chat.status === "running") chat.status = "stopped";
+        if (chat.demonstration) {
+          chat.demonstration.mode = "review";
+          chat.demonstration.notice =
+            "Restored evidence. The browser session was not restored.";
+        }
+        if (
+          chat.mode === "execution" &&
+          chat.execution &&
+          chat.execution.status !== "completed"
+        ) {
+          chat.execution.status = "paused";
+          chat.execution.uncertain = true;
+          chat.pending = null;
+          chat.status = "stopped";
+        }
+        chat.error =
+          "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
+        closeOpenCalls(saved.history);
+        saved.history.push({
+          role: "user",
+          content:
+            "App restarted. Previous browser tabs/authentication are unavailable. Previous in-flight actions may have happened. Inspect and ask before repeating writes.",
+        });
+        this.journal.restore(chat.id, chat.journal ?? []);
+        this.journal.add(
+          chat.id,
+          "runtime",
+          "restart",
+          "Browser not restored; capture remains private.",
+        );
+        this.sessions.set(chat.id, { ...saved, controller: null });
+      } catch {
+        // A corrupt or incompatible record cannot prevent other chats loading.
+        this.journal.remove(saved.chat.id);
       }
-      if (
-        chat.mode === "execution" &&
-        chat.execution &&
-        chat.execution.status !== "completed"
-      ) {
-        chat.execution.status = "paused";
-        chat.execution.uncertain = true;
-        chat.pending = null;
-        chat.status = "stopped";
-      }
-      chat.error =
-        "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
-      closeOpenCalls(saved.history);
-      saved.history.push({
-        role: "user",
-        content:
-          "App restarted. Previous browser tabs/authentication are unavailable. Previous in-flight actions may have happened. Inspect and ask before repeating writes.",
-      });
-      this.journal.restore(chat.id, chat.journal ?? []);
-      this.journal.add(
-        chat.id,
-        "runtime",
-        "restart",
-        "Browser not restored; capture remains private.",
-      );
-      this.sessions.set(chat.id, { ...saved, controller: null });
     }
   }
   flush() {

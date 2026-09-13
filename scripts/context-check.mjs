@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile, utimes } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readdir,
+  readFile,
+  utimes,
+  mkdir,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -70,6 +78,68 @@ try {
     error: null,
   };
   const legacyDirectory = join(directory, "legacy");
+  const corruptDirectory = join(directory, "corrupt");
+  await mkdir(corruptDirectory);
+  const corruptions = [
+    { demonstration: "broken" },
+    { execution: 4 },
+    { control: [] },
+    { pending: { choices: [null] } },
+    { messages: [null] },
+    { tools: [{}] },
+    { journal: [null] },
+  ];
+  for (let index = 0; index < 36; index++) {
+    const id = `bad_${index}`;
+    await writeFile(
+      join(corruptDirectory, `${id}.json`),
+      JSON.stringify({
+        version: 1,
+        chat: { ...chat, id, ...corruptions[index % corruptions.length] },
+        history: [],
+      }),
+    );
+  }
+  for (const [id, history] of [
+    ["bad_history", [null]],
+    [
+      "bad_output",
+      [{ type: "function_call_output", call_id: "call", output: [null] }],
+    ],
+  ]) {
+    await writeFile(
+      join(corruptDirectory, `${id}.json`),
+      JSON.stringify({ version: 1, chat: { ...chat, id }, history }),
+    );
+  }
+  const opaque = {
+    type: "compaction",
+    id: "opaque-id",
+    encrypted_content: "opaque",
+    future_metadata: { keep: true },
+  };
+  await new WorkspaceStore(corruptDirectory).save({
+    chat: { ...chat, id: "valid" },
+    history: [opaque],
+  });
+  const corruptRuntime = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: corruptDirectory,
+    publish: () => {},
+  });
+  await corruptRuntime.ready;
+  assert.deepEqual(
+    corruptRuntime.list().map((chat) => chat.id),
+    ["valid"],
+  );
+  assert.deepEqual(
+    (await new WorkspaceStore(corruptDirectory).load())[0].history[0],
+    opaque,
+  );
+  corruptRuntime.close();
+  await rm(corruptDirectory, { recursive: true });
   const legacyStore = new WorkspaceStore(legacyDirectory);
   for (const [id, time] of [
     ["z_older", 1600000000],
