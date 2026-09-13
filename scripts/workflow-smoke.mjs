@@ -187,6 +187,24 @@ try {
       (chat) => chat.id === deletedId,
     ),
   );
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page.getByRole("button", { name: /^Delete capability/ }).click();
+  await page
+    .getByRole("button", { name: "Cancel deletion", exact: true })
+    .click();
+  assert.equal(await page.locator(".capability-entry").count(), 1);
+  await page.getByRole("button", { name: /^Delete capability/ }).click();
+  await page
+    .getByRole("button", { name: /^Confirm delete capability/ })
+    .click();
+  await page.getByText("No saved capabilities yet.", { exact: true }).waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.capabilities())).drafts.length,
+    0,
+  );
+  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page.getByText("No saved capabilities yet.", { exact: true }).waitFor();
   console.log(
     "Workflow UI: validation, unlocked Run, fresh execution chats, asynchronous outputs, recording review and view preservation passed.",
   );

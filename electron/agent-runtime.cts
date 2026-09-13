@@ -4,8 +4,14 @@ import {
   closeOpenCalls,
   type ContextClient,
 } from "./context.cjs";
-import { Execution, loadCapability, validationState } from "./executor.cjs";
+import {
+  Execution,
+  bindInputs,
+  loadCapability,
+  validationState,
+} from "./executor.cjs";
 import { capabilityWrite } from "./tools/capability-write.cjs";
+import { deleteCapabilityArtifacts } from "./capability-catalog.cjs";
 import type { CapabilityRef } from "../shared/agent.js";
 import { Recorder } from "./recorder.cjs";
 import { Journal } from "./journal.cjs";
@@ -53,6 +59,8 @@ export class AgentRuntime {
   private deleting = new Set<string>();
   private deleted = new Set<string>();
   private repairing = new Set<string>();
+  private deletingCapabilities = new Set<string>();
+  private launchingCapabilities = new Map<string, number>();
   constructor(
     private options: {
       client: Client | null;
@@ -179,6 +187,8 @@ export class AgentRuntime {
     return structuredClone(session.chat);
   }
   send(id: string, text: string): { error?: string } {
+    if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
+      return { error: "Wait for capability deletion to finish." };
     if (
       !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
       typeof text !== "string" ||
@@ -416,6 +426,13 @@ export class AgentRuntime {
     inputs: Record<string, unknown>,
     validation: boolean,
   ): Promise<{ chat?: AgentChat; error?: string }> {
+    const key = JSON.stringify([ref?.sourceChatId, ref?.id]);
+    if (this.deletingCapabilities.has(key))
+      return { error: "This capability is being deleted." };
+    this.launchingCapabilities.set(
+      key,
+      (this.launchingCapabilities.get(key) ?? 0) + 1,
+    );
     try {
       const artifact = await loadCapability(this.options.directory, ref);
       if (
@@ -427,6 +444,8 @@ export class AgentRuntime {
           error:
             "Validate this version with two different input sets before running it.",
         };
+      // Reject bad inputs before creating a persisted session or publishing it.
+      bindInputs(artifact.draft, inputs);
       const id = `run-${randomUUID()}`;
       const created = this.create(id);
       if (!("status" in created)) return created;
@@ -482,6 +501,51 @@ export class AgentRuntime {
         error:
           "Cannot launch this capability. Check its contract and input types.",
       };
+    } finally {
+      const count = (this.launchingCapabilities.get(key) ?? 1) - 1;
+      if (count) this.launchingCapabilities.set(key, count);
+      else this.launchingCapabilities.delete(key);
+    }
+  }
+  async deleteCapability(ref: CapabilityRef): Promise<{ error?: string }> {
+    const key = JSON.stringify([ref?.sourceChatId, ref?.id]);
+    const source = this.sessions.get(ref?.sourceChatId);
+    if (
+      this.deletingCapabilities.has(key) ||
+      this.launchingCapabilities.has(key) ||
+      source?.controller ||
+      this.recordingRequests.has(ref?.sourceChatId) ||
+      this.repairing.has(ref?.sourceChatId)
+    )
+      return {
+        error:
+          "This capability is updating. Wait for the current operation to finish.",
+      };
+    if (
+      [...this.executions.values()].some(
+        (run) =>
+          run.state.id === ref?.id &&
+          run.state.sourceChatId === ref?.sourceChatId,
+      )
+    )
+      return {
+        error:
+          "A session is still using this capability. Finish or delete that session first.",
+      };
+    this.deletingCapabilities.add(key);
+    try {
+      await deleteCapabilityArtifacts(this.options.directory, ref);
+      return {};
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error &&
+          error.message.startsWith("This capability changed.")
+            ? error.message
+            : "Could not delete this capability. Reopen Capabilities and try again.",
+      };
+    } finally {
+      this.deletingCapabilities.delete(key);
     }
   }
   private async runExecution(
@@ -532,6 +596,8 @@ export class AgentRuntime {
     }
   }
   async repair(id: string): Promise<{ error?: string }> {
+    if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
+      return { error: "Wait for capability deletion to finish." };
     if (this.deleting.has(id) || this.repairing.has(id))
       return { error: "This session is updating." };
     const session = this.sessions.get(id);

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capabilityWrite } from "../dist-electron/electron/tools/capability-write.cjs";
 import { dispatch } from "../dist-electron/electron/tools/core.cjs";
+import { AgentRuntime } from "../dist-electron/electron/agent-runtime.cjs";
 const directory = await mkdtemp(join(tmpdir(), "awl-capability-"));
 const context = {
   agentId: "one",
@@ -80,6 +81,69 @@ try {
   assert.equal(catalog[0].version, 2);
   assert.equal(catalog[0].sourceChatId, "one");
   assert.equal(JSON.parse(catalog[0].contract).status, "draft");
+  const runtime = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory,
+    publish: () => {},
+  });
+  await runtime.ready;
+  assert(
+    (
+      await runtime.deleteCapability({
+        sourceChatId: "../",
+        id: "lookup",
+        version: 2,
+      })
+    ).error,
+  );
+  assert.match(
+    (
+      await runtime.deleteCapability({
+        sourceChatId: "one",
+        id: "lookup",
+        version: 1,
+      })
+    ).error,
+    /changed/,
+  );
+  assert.equal((await readCapabilityCatalog(directory))[0].version, 2);
+  assert(
+    (
+      await dispatch(capabilityWrite, JSON.stringify(draft), {
+        ...context,
+        agentId: "two",
+      })
+    ).ok,
+  );
+  const ref = { sourceChatId: "one", id: "lookup", version: 2 };
+  assert((await runtime.launch(ref, { query: 123 }, true)).error);
+  assert.equal(
+    runtime.list().length,
+    0,
+    "Rejected launches must not leave empty sessions",
+  );
+  const deletion = runtime.deleteCapability(ref);
+  assert.match(
+    (await runtime.launch(ref, { query: "test" }, true)).error,
+    /being deleted/,
+  );
+  assert.deepEqual(await deletion, {});
+  assert.deepEqual(
+    (await readCapabilityCatalog(directory)).map((draft) => draft.sourceChatId),
+    ["two"],
+  );
+  assert(
+    !(
+      await readdir(join(directory, "one")).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })
+    ).includes("lookup"),
+    "Delete all versions together",
+  );
+  assert((await runtime.launch(ref, { query: "test" }, true)).error);
+  runtime.close();
   console.log(
     "Passed: capability schema, parameterization, path constraints, immutable versions, conflicting writes.",
   );

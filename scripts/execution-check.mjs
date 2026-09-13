@@ -274,6 +274,11 @@ try {
   assert.equal(broken.status, "waiting");
   assert.match(broken.execution.error, /AMBIGUOUS_TARGET/);
   assert.equal(broken.execution.step, 2);
+  const deletionBlocked = await app.evaluate(
+    (_, ref) => globalThis.runtime.deleteCapability(ref),
+    ref,
+  );
+  assert.match(deletionBlocked.error, /still using/);
   assert.equal(await app.evaluate(() => globalThis.modelCalls), 0);
   // Explicit, versioned correction; old artifact stays pinned and unchanged.
   const repaired = structuredClone(draft);

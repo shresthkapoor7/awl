@@ -262,7 +262,12 @@ try {
     .waitFor();
   assert.equal(await other.evaluate(() => document.cookie), "");
   assert.equal(await other.evaluate(() => localStorage.getItem("saved")), null);
-  await page.locator(".agent-item").first().click();
+  // New sessions are first; return to the older session and its original tab.
+  assert.equal(
+    await page.locator(".agent-item").first().getAttribute("aria-current"),
+    "page",
+  );
+  await page.locator(".agent-item").last().click();
   await waitAttached(1);
   assert.equal((await attached())[0].id, originalId);
 

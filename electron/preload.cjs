@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("awlAgent", {
   state: () => ipcRenderer.invoke("agent:state"),
   create: (id) => ipcRenderer.invoke("agent:create", id),
   deleteSession: (id) => ipcRenderer.invoke("agent:delete-session", id),
+  deleteCapability: (ref) => ipcRenderer.invoke("agent:delete-capability", ref),
   capabilities: () => ipcRenderer.invoke("agent:capabilities"),
   send: (id, text) => ipcRenderer.invoke("agent:send", { id, text }),
   takeover: (id) => ipcRenderer.invoke("agent:takeover", id),
