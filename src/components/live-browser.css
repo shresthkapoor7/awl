@@ -115,7 +115,7 @@
     animation: none;
   }
 }
-.browser-fullscreen {
+.browser-panel.browser-fullscreen {
   position: fixed;
   inset: 56px 0 0;
   height: auto;
