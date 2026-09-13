@@ -91,7 +91,7 @@ The UI check launches Electron and exercises live browsing against a local test 
 | `capability_write`   | Validate and save an immutable, parameterized capability draft.          |
 | `capability_read`    | List and inspect this chat’s saved drafts and versions.                  |
 
-Tools use strict schemas, per-chat browser targets, structured errors, and time limits. Actions consume their DOM snapshot; stale or replaced targets require a fresh observation. Browser content is treated as untrusted input. Visible password, payment-autocomplete, and one-time-code fields block observation; authentication must happen directly in the browser. This detection is conservative and is not a complete sensitive-data classifier.
+Tools use strict schemas, per-chat browser targets, structured errors, and time limits. Actions consume their DOM snapshot; stale or replaced targets require a fresh observation. Browser content is treated as untrusted input. Visible password fields and OTP/payment fields identified through autocomplete tokens, names, labels, or other semantic hints block observation; authentication must happen directly in the browser. This detection is conservative and is not a complete sensitive-data classifier.
 
 Each turn allows up to 30 model responses, 60 tool calls, and five minutes. Tool calls have a 20-second deadline. Stop cancels further work; an action already dispatched may have taken effect, so inspect before repeating it. Screenshots stay in memory and are sent to OpenAI; only the newest two are retained in ongoing model context. Tools expose no arbitrary shell, filesystem, or JavaScript execution to the model.
 

@@ -73,6 +73,71 @@ export async function observable(wc: WebContents) {
       frame.id,
       () => {
         const roots: (Document | ShadowRoot)[] = [document];
+        const normalize = (value: string) =>
+          value
+            .replace(/([a-z])([A-Z])/g, "$1 $2")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim();
+        const sensitiveName =
+          /\b(password|passcode|passwd|pwd|otp|pin|cvv|cvc|csc|ccnum|ccnumber)\b|\b(one time|verification|authentication|security|auth|access|login|sms) code\b|\b(credit|debit) card\b|\b(card|cc) (number|num|no|expiry|expiration|exp|security)\b/;
+        const labelledBy = (el: Element) => {
+          const scope = el.getRootNode() as Document | ShadowRoot;
+          return (el.getAttribute("aria-labelledby") || "")
+            .split(/\s+/)
+            .map((id) => scope.getElementById(id)?.textContent || "")
+            .join(" ");
+        };
+        const isSensitive = (el: Element) => {
+          if (
+            !el.matches(
+              'input,textarea,select,[contenteditable="true"],[role="textbox"],[role="spinbutton"]',
+            )
+          )
+            return false;
+          if (el.matches('input[type="password"]')) return true;
+          // Autocomplete is a token list, e.g. "section-payment billing cc-number".
+          const autocomplete = (el.getAttribute("autocomplete") || "")
+            .toLowerCase()
+            .split(/\s+/);
+          if (
+            autocomplete.some(
+              (token) =>
+                token.startsWith("cc-") ||
+                ["one-time-code", "current-password", "new-password"].includes(
+                  token,
+                ),
+            )
+          )
+            return true;
+          const labels =
+            "labels" in el
+              ? Array.from((el as HTMLInputElement).labels || [])
+                  .map((label) => label.textContent)
+                  .join(" ")
+              : "";
+          const group = el.closest('fieldset,[role="group"]');
+          const groupName = group
+            ? [
+                group.getAttribute("aria-label"),
+                labelledBy(group),
+                group.matches("fieldset")
+                  ? group.querySelector(":scope > legend")?.textContent
+                  : "",
+              ].join(" ")
+            : "";
+          const hints = [
+            "name",
+            "id",
+            "aria-label",
+            "placeholder",
+            "title",
+          ].map((key) => el.getAttribute(key) || "");
+          hints.push(labels, labelledBy(el), groupName);
+          // Numeric entry alone is not sensitive: quantities and postal codes use it too.
+          // Only metadata is inspected here; never read or return entered values.
+          return hints.some((hint) => sensitiveName.test(normalize(hint)));
+        };
         let visited = 0;
         while (roots.length) {
           const root = roots.pop()!;
@@ -80,9 +145,7 @@ export async function observable(wc: WebContents) {
             if (++visited > 20000) return true;
             if (el.shadowRoot) roots.push(el.shadowRoot);
             if (
-              el.matches(
-                'input[type="password"],input[autocomplete="one-time-code"],input[autocomplete^="cc-"],input[autocomplete="current-password"],input[autocomplete="new-password"]',
-              ) &&
+              isSensitive(el) &&
               el.getClientRects().length > 0 &&
               getComputedStyle(el).visibility !== "hidden"
             )

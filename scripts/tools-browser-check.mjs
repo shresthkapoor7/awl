@@ -6,8 +6,35 @@ import { join, resolve } from "node:path";
 import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
 const directory = await mkdtemp(join(tmpdir(), "awl-tools-"));
+const sensitiveFixtures = {
+  otp: '<input name="otp" value="fixture-secret">',
+  card: '<label for="card">Card number</label><input id="card" inputmode="numeric" value="fixture-secret">',
+  camel: '<input name="creditCardNumber" value="fixture-secret">',
+  aria: '<span id="hint">Security code</span><input aria-labelledby="hint" value="fixture-secret">',
+  placeholder: '<input placeholder="Verification code" value="fixture-secret">',
+  autocomplete:
+    '<input autocomplete="section-checkout billing CC-NUMBER" value="fixture-secret">',
+  pin: '<input aria-label="PIN" value="fixture-secret">',
+  split:
+    '<fieldset><legend>One-time code</legend><input inputmode="numeric" maxlength="1" value="1"><input inputmode="numeric" maxlength="1" value="2"></fieldset>',
+  editable:
+    '<div role="textbox" contenteditable="true" aria-label="Card number">fixture-secret</div>',
+  "semantic-shadow": `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<span id="hint">CVV</span><input aria-labelledby="hint" value="fixture-secret">';</script>`,
+  "semantic-frame": '<iframe src="/otp"></iframe>',
+};
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+  const fixture = sensitiveFixtures[req.url.slice(1)];
+  if (fixture) {
+    res.end(fixture);
+    return;
+  }
+  if (req.url === "/ordinary-numeric") {
+    res.end(
+      '<label>Quantity<input inputmode="numeric" value="4"></label><label>Postal code<input inputmode="numeric" value="10001"></label><input name="otp" type="hidden" value="fixture-secret">',
+    );
+    return;
+  }
   if (req.url === "/sensitive") {
     res.end('<input type="password" value="fixture-secret">');
     return;
@@ -230,20 +257,38 @@ try {
   });
   const shadow = await inspect();
   assert.ok(shadow.data.elements.some((el) => el.name === "Shadow input"));
-  for (const path of ["sensitive", "shadow-secret"]) {
+  for (const path of [
+    "sensitive",
+    "shadow-secret",
+    ...Object.keys(sensitiveFixtures),
+  ]) {
     await call("browser-start", "browserStart", {
       url: `${base}/${path}`,
       tab_id: tabId,
     });
-    assert.equal((await inspect()).error.code, "SENSITIVE_PAGE");
+    assert.equal((await inspect()).error.code, "SENSITIVE_PAGE", path);
     const blockedCapture = await call(
       "browser-screenshot",
       "browserScreenshot",
       { tab_id: tabId },
     );
-    assert.equal(blockedCapture.error.code, "SENSITIVE_PAGE");
+    assert.equal(blockedCapture.error.code, "SENSITIVE_PAGE", path);
     assert.equal(blockedCapture.image, undefined);
   }
+  await call("browser-start", "browserStart", {
+    url: `${base}/ordinary-numeric`,
+    tab_id: tabId,
+  });
+  assert.equal(
+    (await inspect()).ok,
+    true,
+    "ordinary numeric fields are observable",
+  );
+  assert.equal(
+    (await call("browser-screenshot", "browserScreenshot", { tab_id: tabId }))
+      .ok,
+    true,
+  );
   console.log(
     "Passed: browser tools, real fill/click, stale refs, frames, shadow roots, sensitive capture blocks, waits, and chat isolation.",
   );
