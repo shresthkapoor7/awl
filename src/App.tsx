@@ -74,7 +74,7 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [browserOpen, setBrowserOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(224);
+  const [sidebarWidth, setSidebarWidth] = useState(256);
   const [browserWidth, setBrowserWidth] = useState(580);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const sidebarMax = Math.min(320, Math.max(180, windowWidth - 680));

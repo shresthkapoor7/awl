@@ -186,7 +186,7 @@ strong {
 .brand > span {
   font-size: 31px;
   font-weight: 600;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.025em;
 }
 .brand-period {
   color: var(--accent);
@@ -479,6 +479,18 @@ strong {
 }
 .assistant-message {
   margin-top: 24px;
+}
+.message-person .assistant-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.assistant-brand svg {
+  width: 19px;
+  height: 19px;
 }
 .primary-button {
   display: inline-flex;

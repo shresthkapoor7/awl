@@ -114,7 +114,10 @@ export function Conversation({
             }
           >
             <div className="message-person">
-              <strong>{message.role === "user" ? "You" : "awl"}</strong>
+              <strong className={message.role === "assistant" ? "assistant-brand" : undefined}>
+                {message.role === "assistant" && <Mark />}
+                {message.role === "user" ? "You" : "awl"}
+              </strong>
               {message.role === "assistant" && (
                 <span>
                   {agent.live.mode === "execution" ? "Capability" : model}

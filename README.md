@@ -1,4 +1,4 @@
-# awl
+<h1><img src="public/awl.svg" width="40" height="40" alt="" align="absmiddle" /> awl</h1>
 
 Computer use that learns a workflow, turns it into a capability, and asks for help when it needs you.
 
