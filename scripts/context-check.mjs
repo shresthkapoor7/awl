@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  readdir,
+  readFile,
+  utimes,
+  mkdir,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -69,6 +77,147 @@ try {
     },
     error: null,
   };
+  const legacyDirectory = join(directory, "legacy");
+  const rawRecording = {
+    mode: "review",
+    notice: null,
+    steps: [
+      {
+        id: "entry",
+        at: new Date().toISOString(),
+        operation: "fill",
+        target: null,
+        value: "unrecognized-secret-entry",
+        url: null,
+        tab: 0,
+        outcome: "Observed action",
+      },
+    ],
+  };
+  const privatePath = join(directory, "private_record.json");
+  await writeFile(
+    privatePath,
+    JSON.stringify({
+      version: 1,
+      chat: { ...chat, id: "private_record", demonstration: rawRecording },
+      history: [],
+    }),
+  );
+  const redacted = await store.load();
+  assert.equal(
+    redacted.find((item) => item.chat.id === "private_record").chat
+      .demonstration.steps[0].value,
+    null,
+  );
+  assert(
+    !(await readFile(privatePath, "utf8")).includes(
+      "unrecognized-secret-entry",
+    ),
+  );
+  await store.save({
+    chat: { ...chat, id: "private_record", demonstration: rawRecording },
+    history: [],
+  });
+  assert(
+    !(await readFile(privatePath, "utf8")).includes(
+      "unrecognized-secret-entry",
+    ),
+  );
+  await store.remove("private_record");
+  const corruptDirectory = join(directory, "corrupt");
+  await mkdir(corruptDirectory);
+  const corruptions = [
+    { demonstration: "broken" },
+    { execution: 4 },
+    { control: [] },
+    { pending: { choices: [null] } },
+    { messages: [null] },
+    { tools: [{}] },
+    { journal: [null] },
+  ];
+  for (let index = 0; index < 36; index++) {
+    const id = `bad_${index}`;
+    await writeFile(
+      join(corruptDirectory, `${id}.json`),
+      JSON.stringify({
+        version: 1,
+        chat: { ...chat, id, ...corruptions[index % corruptions.length] },
+        history: [],
+      }),
+    );
+  }
+  for (const [id, history] of [
+    ["bad_history", [null]],
+    [
+      "bad_output",
+      [{ type: "function_call_output", call_id: "call", output: [null] }],
+    ],
+  ]) {
+    await writeFile(
+      join(corruptDirectory, `${id}.json`),
+      JSON.stringify({ version: 1, chat: { ...chat, id }, history }),
+    );
+  }
+  const opaque = {
+    type: "compaction",
+    id: "opaque-id",
+    encrypted_content: "opaque",
+    future_metadata: { keep: true },
+  };
+  await new WorkspaceStore(corruptDirectory).save({
+    chat: { ...chat, id: "valid" },
+    history: [opaque],
+  });
+  const corruptRuntime = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: corruptDirectory,
+    publish: () => {},
+  });
+  await corruptRuntime.ready;
+  assert.deepEqual(
+    corruptRuntime.list().map((chat) => chat.id),
+    ["valid"],
+  );
+  assert.deepEqual(
+    (await new WorkspaceStore(corruptDirectory).load())[0].history[0],
+    opaque,
+  );
+  corruptRuntime.close();
+  await rm(corruptDirectory, { recursive: true });
+  const legacyStore = new WorkspaceStore(legacyDirectory);
+  for (const [id, time] of [
+    ["z_older", 1600000000],
+    ["b_newer", 1700000000],
+    ["a_same_time", 1700000000],
+  ]) {
+    await legacyStore.save({
+      chat: { ...chat, id, createdAt: 0 },
+      history: [],
+    });
+    await utimes(join(legacyDirectory, `${id}.json`), time, time);
+  }
+  const legacy = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: legacyDirectory,
+    publish: () => {},
+  });
+  await legacy.ready;
+  assert.deepEqual(
+    legacy.list().map((chat) => chat.id),
+    ["a_same_time", "b_newer", "z_older"],
+  );
+  assert.equal(legacy.list()[0].createdAt, 1700000000000);
+  const migration = await legacyStore.load();
+  assert.equal(
+    migration.find((item) => item.chat.id === "b_newer").chat.createdAt,
+    1700000000000,
+  );
+  legacy.close();
+  await rm(legacyDirectory, { recursive: true });
   await store.save({ chat, history });
   const runtime = new AgentRuntime({
     client: null,
@@ -167,12 +316,104 @@ try {
     publish: () => {},
   });
   await reopened.ready;
+  reopened.create("newest_a");
+  reopened.create("newest_b");
+  assert.deepEqual(
+    reopened
+      .list()
+      .slice(0, 2)
+      .map((chat) => chat.id),
+    ["newest_b", "newest_a"],
+  );
+  await reopened.flush();
+  const ordered = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await ordered.ready;
+  assert.deepEqual(
+    ordered
+      .list()
+      .slice(0, 2)
+      .map((chat) => chat.id),
+    ["newest_b", "newest_a"],
+  );
+  ordered.close();
   assert.equal(reopened.list().find((c) => c.id === "paused").status, "idle");
   assert.equal(
     reopened.list().find((c) => c.id === "paused").mode,
     "discovery",
   );
   reopened.close();
+  const removedBrowsers = [];
+  const deleting = new AgentRuntime({
+    client: {
+      responses: {
+        create: async (_, { signal }) =>
+          new Promise((_, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+            if (signal.aborted) reject(signal.reason);
+          }),
+      },
+    },
+    browser: {
+      removeSession: async (id) => {
+        removedBrowsers.push(id);
+      },
+    },
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await deleting.ready;
+  deleting.create("delete_retry");
+  await deleting.flush();
+  const removeRecord = deleting.store.remove.bind(deleting.store);
+  deleting.store.remove = async () => {
+    throw new Error("Simulated disk failure");
+  };
+  assert((await deleting.deleteSession("delete_retry")).error);
+  assert(deleting.list().some((chat) => chat.id === "delete_retry"));
+  assert.deepEqual(
+    removedBrowsers,
+    [],
+    "Do not destroy a browser when deleting its record fails",
+  );
+  deleting.store.remove = removeRecord;
+  assert.deepEqual(await deleting.deleteSession("delete_retry"), {});
+  assert.deepEqual(removedBrowsers.splice(0), ["delete_retry"]);
+  deleting.create("delete_running");
+  assert.deepEqual(
+    deleting.send("delete_running", "Wait for cancellation"),
+    {},
+  );
+  assert.deepEqual(await deleting.deleteSession("delete_running"), {});
+  assert(!deleting.list().some((chat) => chat.id === "delete_running"));
+  assert(
+    deleting.create("delete_running").error,
+    "Late work cannot recreate a deleted session",
+  );
+  assert.deepEqual(removedBrowsers, ["delete_running"]);
+  deleting.create("cleanup_failure");
+  deleting.options.browser.removeSession = async () => {
+    throw new Error("Simulated cache cleanup failure");
+  };
+  assert.deepEqual(await deleting.deleteSession("cleanup_failure"), {});
+  assert(!deleting.list().some((chat) => chat.id === "cleanup_failure"));
+  await deleting.flush();
+  const afterDeletion = await new WorkspaceStore(directory).load();
+  assert(!afterDeletion.some((item) => item.chat.id === "cleanup_failure"));
+  assert(!afterDeletion.some((item) => item.chat.id === "delete_running"));
+  assert(
+    afterDeletion.some((item) => item.chat.id === "completed"),
+    "Keep other sessions",
+  );
+  deleting.close();
   console.log(
     "Context: exact-count compaction, opaque item preservation, interrupted call pairing, atomic persistence and private restart passed.",
   );

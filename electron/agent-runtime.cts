@@ -4,8 +4,14 @@ import {
   closeOpenCalls,
   type ContextClient,
 } from "./context.cjs";
-import { Execution, loadCapability, validationState } from "./executor.cjs";
+import {
+  Execution,
+  bindInputs,
+  loadCapability,
+  validationState,
+} from "./executor.cjs";
 import { capabilityWrite } from "./tools/capability-write.cjs";
+import { deleteCapabilityArtifacts } from "./capability-catalog.cjs";
 import type { CapabilityRef } from "../shared/agent.js";
 import { Recorder } from "./recorder.cjs";
 import { Journal } from "./journal.cjs";
@@ -49,6 +55,12 @@ export class AgentRuntime {
   private recordingRequests = new Set<string>();
   private journal = new Journal();
   private sessions = new Map<string, Session>();
+  private lastCreatedAt = 0;
+  private deleting = new Set<string>();
+  private deleted = new Set<string>();
+  private repairing = new Set<string>();
+  private deletingCapabilities = new Set<string>();
+  private launchingCapabilities = new Map<string, number>();
   constructor(
     private options: {
       client: Client | null;
@@ -69,44 +81,51 @@ export class AgentRuntime {
   }
   private async restore() {
     for (const saved of (await this.store?.load()) ?? []) {
-      const chat = saved.chat;
-      chat.control = {
-        owner: "human",
-        capture: "private",
-        generation: (chat.control?.generation ?? 0) + 1,
-      };
-      if (chat.status === "running") chat.status = "stopped";
-      if (chat.demonstration) {
-        chat.demonstration.mode = "review";
-        chat.demonstration.notice =
-          "Restored evidence. The browser session was not restored.";
+      try {
+        const chat = saved.chat;
+        chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
+        this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
+        chat.control = {
+          owner: "human",
+          capture: "private",
+          generation: (chat.control?.generation ?? 0) + 1,
+        };
+        if (chat.status === "running") chat.status = "stopped";
+        if (chat.demonstration) {
+          chat.demonstration.mode = "review";
+          chat.demonstration.notice =
+            "Restored evidence. The browser session was not restored.";
+        }
+        if (
+          chat.mode === "execution" &&
+          chat.execution &&
+          chat.execution.status !== "completed"
+        ) {
+          chat.execution.status = "paused";
+          chat.execution.uncertain = true;
+          chat.pending = null;
+          chat.status = "stopped";
+        }
+        chat.error =
+          "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
+        closeOpenCalls(saved.history);
+        saved.history.push({
+          role: "user",
+          content:
+            "App restarted. Previous browser tabs/authentication are unavailable. Previous in-flight actions may have happened. Inspect and ask before repeating writes.",
+        });
+        this.journal.restore(chat.id, chat.journal ?? []);
+        this.journal.add(
+          chat.id,
+          "runtime",
+          "restart",
+          "Browser not restored; capture remains private.",
+        );
+        this.sessions.set(chat.id, { ...saved, controller: null });
+      } catch {
+        // A corrupt or incompatible record cannot prevent other chats loading.
+        this.journal.remove(saved.chat.id);
       }
-      if (
-        chat.mode === "execution" &&
-        chat.execution &&
-        chat.execution.status !== "completed"
-      ) {
-        chat.execution.status = "paused";
-        chat.execution.uncertain = true;
-        chat.pending = null;
-        chat.status = "stopped";
-      }
-      chat.error =
-        "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
-      closeOpenCalls(saved.history);
-      saved.history.push({
-        role: "user",
-        content:
-          "App restarted. Previous browser tabs/authentication are unavailable. Previous in-flight actions may have happened. Inspect and ask before repeating writes.",
-      });
-      this.journal.restore(chat.id, chat.journal ?? []);
-      this.journal.add(
-        chat.id,
-        "runtime",
-        "restart",
-        "Browser not restored; capture remains private.",
-      );
-      this.sessions.set(chat.id, { ...saved, controller: null });
     }
   }
   flush() {
@@ -114,21 +133,38 @@ export class AgentRuntime {
   }
   list() {
     return structuredClone(
-      [...this.sessions.values()].map((item) => item.chat),
+      [...this.sessions.values()]
+        .map((item) => item.chat)
+        .sort(
+          (a, b) =>
+            (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id),
+        ),
     );
   }
   private publish(session: Session) {
+    if (
+      this.sessions.get(session.chat.id) !== session ||
+      this.deleting.has(session.chat.id)
+    )
+      return;
     session.chat.journal = this.journal.list(session.chat.id);
     this.options.publish(structuredClone(session.chat));
     void this.store
       ?.save({ chat: session.chat, history: session.history })
       .catch(() => {
+        if (
+          this.sessions.get(session.chat.id) !== session ||
+          this.deleting.has(session.chat.id)
+        )
+          return;
         session.chat.error =
           "Could not save this conversation locally. Free disk space before closing awl.";
         this.options.publish(structuredClone(session.chat));
       });
   }
   create(id: string): AgentChat | { error: string } {
+    if (this.deleting.has(id) || this.deleted.has(id))
+      return { error: "This session was deleted." };
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id))
       return { error: "Invalid chat identity." };
     let session = this.sessions.get(id);
@@ -138,6 +174,10 @@ export class AgentRuntime {
       session = {
         chat: {
           id,
+          createdAt: (this.lastCreatedAt = Math.max(
+            Date.now(),
+            this.lastCreatedAt + 1,
+          )),
           name: "New agent",
           status: "idle",
           messages: [],
@@ -150,10 +190,13 @@ export class AgentRuntime {
         controller: null,
       };
       this.sessions.set(id, session);
+      this.publish(session);
     }
     return structuredClone(session.chat);
   }
   send(id: string, text: string): { error?: string } {
+    if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
+      return { error: "Wait for capability deletion to finish." };
     if (
       !/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
       typeof text !== "string" ||
@@ -219,6 +262,8 @@ export class AgentRuntime {
     return { request_id: session.chat.pending.id };
   }
   takeover(id: string): { error?: string } {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     const session = this.sessions.get(id);
     if (!session) return { error: "Chat not found." };
     if (session.chat.pending) return {};
@@ -247,6 +292,8 @@ export class AgentRuntime {
     requestId: string,
     answer: string,
   ): Promise<{ error?: string }> {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     const session = this.sessions.get(id);
     if (!session?.chat.pending || session.chat.pending.id !== requestId)
       return { error: "This request is no longer pending." };
@@ -350,11 +397,55 @@ export class AgentRuntime {
     };
     this.options.browser.setOwner?.(id, "human");
   }
+  async deleteSession(id: string): Promise<{ error?: string }> {
+    const session = this.sessions.get(id);
+    if (!session || this.deleting.has(id))
+      return { error: "Session not found or already deleting." };
+    if (this.recordingRequests.has(id) || this.repairing.has(id))
+      return { error: "Wait for the current session update, then delete it." };
+    this.deleting.add(id);
+    try {
+      this.stop(id);
+      const deadline = Date.now() + 5000;
+      while (session.controller && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      if (session.controller)
+        return {
+          error: "The agent is still stopping. Try deleting again in a moment.",
+        };
+      // Persistence is the commit point. A failed unlink must leave the live
+      // browser available so the user can retry or continue the session.
+      await this.store?.remove(id);
+      const recorder = this.recorders.get(id);
+      this.recorders.delete(id);
+      this.executions.delete(id);
+      this.sessions.delete(id);
+      this.journal.remove(id);
+      this.deleted.add(id);
+      recorder?.close();
+      await this.options.browser.removeSession?.(id);
+      return {};
+    } catch {
+      // Cleanup cannot resurrect a session whose durable deletion succeeded.
+      if (this.deleted.has(id)) return {};
+      return { error: "Could not delete this session. Try again." };
+    } finally {
+      this.deleting.delete(id);
+      if (this.sessions.has(id)) this.publish(session);
+    }
+  }
   async launch(
     ref: CapabilityRef,
     inputs: Record<string, unknown>,
     validation: boolean,
   ): Promise<{ chat?: AgentChat; error?: string }> {
+    const key = JSON.stringify([ref?.sourceChatId, ref?.id]);
+    if (this.deletingCapabilities.has(key))
+      return { error: "This capability is being deleted." };
+    this.launchingCapabilities.set(
+      key,
+      (this.launchingCapabilities.get(key) ?? 0) + 1,
+    );
     try {
       const artifact = await loadCapability(this.options.directory, ref);
       if (
@@ -366,6 +457,8 @@ export class AgentRuntime {
           error:
             "Validate this version with two different input sets before running it.",
         };
+      // Reject bad inputs before creating a persisted session or publishing it.
+      bindInputs(artifact.draft, inputs);
       const id = `run-${randomUUID()}`;
       const created = this.create(id);
       if (!("status" in created)) return created;
@@ -421,6 +514,51 @@ export class AgentRuntime {
         error:
           "Cannot launch this capability. Check its contract and input types.",
       };
+    } finally {
+      const count = (this.launchingCapabilities.get(key) ?? 1) - 1;
+      if (count) this.launchingCapabilities.set(key, count);
+      else this.launchingCapabilities.delete(key);
+    }
+  }
+  async deleteCapability(ref: CapabilityRef): Promise<{ error?: string }> {
+    const key = JSON.stringify([ref?.sourceChatId, ref?.id]);
+    const source = this.sessions.get(ref?.sourceChatId);
+    if (
+      this.deletingCapabilities.has(key) ||
+      this.launchingCapabilities.has(key) ||
+      source?.controller ||
+      this.recordingRequests.has(ref?.sourceChatId) ||
+      this.repairing.has(ref?.sourceChatId)
+    )
+      return {
+        error:
+          "This capability is updating. Wait for the current operation to finish.",
+      };
+    if (
+      [...this.executions.values()].some(
+        (run) =>
+          run.state.id === ref?.id &&
+          run.state.sourceChatId === ref?.sourceChatId,
+      )
+    )
+      return {
+        error:
+          "A session is still using this capability. Finish or delete that session first.",
+      };
+    this.deletingCapabilities.add(key);
+    try {
+      await deleteCapabilityArtifacts(this.options.directory, ref);
+      return {};
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error &&
+          error.message.startsWith("This capability changed.")
+            ? error.message
+            : "Could not delete this capability. Reopen Capabilities and try again.",
+      };
+    } finally {
+      this.deletingCapabilities.delete(key);
     }
   }
   private async runExecution(
@@ -471,6 +609,10 @@ export class AgentRuntime {
     }
   }
   async repair(id: string): Promise<{ error?: string }> {
+    if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
+      return { error: "Wait for capability deletion to finish." };
+    if (this.deleting.has(id) || this.repairing.has(id))
+      return { error: "This session is updating." };
     const session = this.sessions.get(id);
     const execution = this.executions.get(id);
     if (
@@ -484,6 +626,7 @@ export class AgentRuntime {
       return {
         error: "Repair needs OPENAI_API_KEY. Deterministic runs do not.",
       };
+    this.repairing.add(id);
     try {
       // Copy the pinned contract into this run's namespace; preserve the original.
       await capabilityWrite.execute(
@@ -512,6 +655,8 @@ export class AgentRuntime {
       return {
         error: "Could not enter repair. The original capability is unchanged.",
       };
+    } finally {
+      this.repairing.delete(id);
     }
   }
   async record(
@@ -520,6 +665,8 @@ export class AgentRuntime {
     stepId?: string,
     parameters: Record<string, string> = {},
   ): Promise<{ error?: string }> {
+    if (this.deleting.has(id))
+      return { error: "This session is being deleted." };
     if (this.recordingRequests.has(id))
       return { error: "Recording is already updating." };
     this.recordingRequests.add(id);
@@ -600,7 +747,9 @@ export class AgentRuntime {
         const evidence = steps.map((step) => {
           let parameter = parameters[step.id];
           if (!parameter && ["fill", "select"].includes(step.operation)) {
-            const key = JSON.stringify([step.target, step.value]);
+            // Separate occurrences may need different values. Raw entries are
+            // intentionally unavailable, so do not infer equality from nulls.
+            const key = step.id;
             if (!inferred.has(key))
               inferred.set(key, `input_${inferred.size + 1}`);
             parameter = inferred.get(key)!;

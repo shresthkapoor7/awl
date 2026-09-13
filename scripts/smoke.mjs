@@ -353,6 +353,94 @@ try {
       .isEnabled(),
     true,
   );
+  const beforeDelete = (await page.evaluate(() => window.awlAgent.state()))
+    .chats;
+  const newest = beforeDelete[0];
+  assert.equal(
+    await page.locator(".agent-item").first().getAttribute("aria-current"),
+    "page",
+  );
+  await page
+    .locator(".agent-row")
+    .first()
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page
+    .getByRole("button", { name: "Cancel deletion", exact: true })
+    .click();
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    32,
+  );
+  await page
+    .locator(".agent-row")
+    .first()
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page.getByRole("button", { name: /^Confirm delete session/ }).click();
+  await page.waitForFunction(
+    (id) => sessionStorage.getItem("awl-selected-chat") !== id,
+    newest.id,
+  );
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    31,
+  );
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.waitForFunction(
+    () => !document.querySelector(".create-agent-error"),
+  );
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    32,
+  );
+  await page.reload();
+  await page.locator(".agent-item").first().waitFor();
+  assert(
+    !(await page.evaluate(() => window.awlAgent.state())).chats.some(
+      (chat) => chat.id === newest.id,
+    ),
+  );
+  // Complete the second deletion before the selected session's deletion.
+  // The older async callback must use the current list, not select that deleted session.
+  await page.locator(".agent-item").first().click();
+  const overlapping = (
+    await page.evaluate(() => window.awlAgent.state())
+  ).chats.slice(0, 2);
+  await app.evaluate(({ ipcMain }, id) => {
+    const original = ipcMain._invokeHandlers.get("agent:delete-session");
+    ipcMain.removeHandler("agent:delete-session");
+    ipcMain.handle("agent:delete-session", async (event, target) => {
+      const result = await original(event, target);
+      if (target === id)
+        await new Promise((resolve) => {
+          globalThis.releaseDeletion = resolve;
+        });
+      return result;
+    });
+  }, overlapping[0].id);
+  for (const index of [0, 1]) {
+    const row = page.locator(".agent-row").nth(index);
+    await row.getByRole("button", { name: /^Delete session/ }).click();
+    await row.getByRole("button", { name: /^Confirm delete session/ }).click();
+  }
+  await page.waitForFunction(
+    () => document.querySelectorAll(".agent-row").length === 31,
+  );
+  await app.evaluate(() => globalThis.releaseDeletion());
+  await page.waitForFunction(
+    () => document.querySelectorAll(".agent-row").length === 30,
+  );
+  const actualSelection = await page.evaluate(() =>
+    sessionStorage.getItem("awl-selected-chat"),
+  );
+  assert(!overlapping.some((chat) => chat.id === actualSelection));
+  assert(
+    (await page.evaluate(() => window.awlAgent.state())).chats.some(
+      (chat) => chat.id === actualSelection,
+    ),
+  );
+  assert.equal(await page.locator(".agent-item.selected").count(), 1);
   assert.deepEqual(errors, []);
   console.log(
     "Passed: clean startup, no demo UI, live events, rejected-send draft preservation, navigation, resize/collapse, search, session reload, compact layout.",

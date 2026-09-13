@@ -57,17 +57,19 @@ function installRecorder({
       'input,textarea,select,button,a,[role="button"],[role="textbox"],[contenteditable="true"]',
     );
     if (!el) return;
-    const target = g.__awlTargeting.describe(el) as Target | null;
+    const described = g.__awlTargeting.describe(el) as Target | null;
+    const target =
+      described?.kind === "text" &&
+      el.matches('input,textarea,select,[contenteditable="true"]')
+        ? null
+        : described;
     let operation: RecordedStep["operation"];
     let value: string | null = null;
     if (event.type === "input" || event.type === "change") {
       if (el.matches('input[type="checkbox"],input[type="radio"]')) return;
       operation = el.tagName === "SELECT" ? "select" : "fill";
-      value = (
-        (el as HTMLInputElement).value ??
-        (el as HTMLElement).innerText ??
-        ""
-      ).slice(0, 1000);
+      // Record that this control changed, never its entry. Parameters are
+      // supplied at execution time, including when metadata misses a secret.
     } else if (event.type === "keydown") {
       if ((event as KeyboardEvent).key !== "Enter") return;
       operation = "press";
@@ -241,7 +243,14 @@ export class Recorder {
     this.seen.add(item.id);
     if (this.seen.size > 2000)
       this.seen.delete(this.seen.values().next().value!);
-    const step = { ...item, tab, url: null } as RecordedStep;
+    const step = {
+      ...item,
+      tab,
+      url: null,
+      value: ["fill", "select"].includes(item.operation ?? "")
+        ? null
+        : item.value,
+    } as RecordedStep;
     const last = this.state.steps.at(-1);
     if (
       (step.operation === "fill" || step.operation === "select") &&

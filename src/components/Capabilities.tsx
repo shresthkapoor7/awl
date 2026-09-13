@@ -2,6 +2,7 @@ import { Code2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { SavedCapability } from "../../shared/agent";
 import "./capabilities.css";
+import { DeleteButton } from "./DeleteButton";
 export function Capabilities({
   onLaunch,
 }: {
@@ -10,6 +11,29 @@ export function Capabilities({
   const [drafts, setDrafts] = useState<SavedCapability[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  async function remove(draft: SavedCapability) {
+    setDeleteError(null);
+    const result = await window.awlAgent
+      ?.deleteCapability({
+        id: draft.id,
+        sourceChatId: draft.sourceChatId,
+        version: draft.version,
+      })
+      .catch(() => ({ error: "Could not delete this capability." }));
+    if (!result || result.error) {
+      setDeleteError(
+        result?.error ?? "Open awl in Electron to delete capabilities.",
+      );
+      return;
+    }
+    setDrafts((current) =>
+      current.filter(
+        (item) =>
+          item.id !== draft.id || item.sourceChatId !== draft.sourceChatId,
+      ),
+    );
+  }
   useEffect(() => {
     let active = true;
     if (!window.awlAgent) {
@@ -45,6 +69,11 @@ export function Capabilities({
         <header className="capabilities-heading">
           <h1>Capabilities</h1>
         </header>
+        {deleteError && (
+          <p className="capabilities-note" role="alert">
+            {deleteError}
+          </p>
+        )}
         {loading ? (
           <p className="capabilities-note" role="status">
             Loading…
@@ -69,6 +98,10 @@ export function Capabilities({
                     <span>
                       v{draft.version} · {draft.validation ?? "draft"}
                     </span>
+                    <DeleteButton
+                      name={`capability ${draft.name} (all versions)`}
+                      onDelete={() => remove(draft)}
+                    />
                   </div>
                   <p>{draft.description}</p>
                   <CapabilityLaunch draft={draft} onLaunch={onLaunch} />
@@ -106,6 +139,16 @@ function CapabilityLaunch({
     setBusy(true);
     setError(null);
     try {
+      const missingNumber = fields.find(
+        (field) =>
+          field.type === "number" &&
+          (!(inputs[field.name] ?? "").trim() ||
+            !Number.isFinite(Number(inputs[field.name]))),
+      );
+      if (missingNumber) {
+        setError(`Enter a number for ${missingNumber.name}.`);
+        return;
+      }
       const values = Object.fromEntries(
         fields.map((field) => [
           field.name,

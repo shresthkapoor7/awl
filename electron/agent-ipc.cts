@@ -71,6 +71,13 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       return { drafts: [], error: "Could not read saved capabilities." };
     }
   });
+  ipcMain.handle("agent:delete-session", async (event, id) => {
+    authorize(event);
+    await runtime.ready;
+    return typeof id === "string"
+      ? runtime.deleteSession(id)
+      : { error: "Invalid session." };
+  });
   ipcMain.handle("agent:send", async (event, input) => {
     authorize(event);
     await runtime.ready;
@@ -82,6 +89,19 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     )
       return { error: "Invalid chat request." };
     return runtime.send(input.id, input.text);
+  });
+  ipcMain.handle("agent:delete-capability", async (event, ref) => {
+    authorize(event);
+    await runtime.ready;
+    if (
+      !ref ||
+      typeof ref !== "object" ||
+      typeof ref.id !== "string" ||
+      typeof ref.sourceChatId !== "string" ||
+      !Number.isInteger(ref.version)
+    )
+      return { error: "Invalid capability." };
+    return runtime.deleteCapability(ref);
   });
   ipcMain.handle("agent:stop", async (event, id) => {
     authorize(event);
@@ -173,6 +193,8 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     for (const name of [
       "agent:state",
       "agent:create",
+      "agent:delete-session",
+      "agent:delete-capability",
       "agent:capabilities",
       "agent:send",
       "agent:stop",

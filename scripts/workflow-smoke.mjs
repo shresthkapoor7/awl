@@ -150,6 +150,101 @@ try {
   assert.equal(await page.getByText(/Run history ·/).count(), 1);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/workflow-review.png" });
+  const deletedId = await page.evaluate(() =>
+    sessionStorage.getItem("awl-selected-chat"),
+  );
+  const browserCount = await app.evaluate(
+    ({ webContents }, base) =>
+      webContents
+        .getAllWebContents()
+        .filter((wc) => wc.getURL().startsWith(base)).length,
+    base,
+  );
+  await page.getByRole("button", { name: "Record", exact: true }).click();
+  await page.getByText("Recording demonstration", { exact: true }).waitFor();
+  await page
+    .locator(".agent-row")
+    .filter({ has: page.locator(".selected") })
+    .getByRole("button", { name: /^Delete session/ })
+    .click();
+  await page.getByRole("button", { name: /^Confirm delete session/ }).click();
+  await page.waitForFunction(
+    (id) => sessionStorage.getItem("awl-selected-chat") !== id,
+    deletedId,
+  );
+  assert.equal(
+    await app.evaluate(
+      ({ webContents }, base) =>
+        webContents
+          .getAllWebContents()
+          .filter((wc) => wc.getURL().startsWith(base)).length,
+      base,
+    ),
+    browserCount - 1,
+  );
+  assert(
+    !(await page.evaluate(() => window.awlAgent.state())).chats.some(
+      (chat) => chat.id === deletedId,
+    ),
+  );
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page.getByRole("button", { name: /^Delete capability/ }).click();
+  await page
+    .getByRole("button", { name: "Cancel deletion", exact: true })
+    .click();
+  assert.equal(await page.locator(".capability-entry").count(), 1);
+  await page.getByRole("button", { name: /^Delete capability/ }).click();
+  await page
+    .getByRole("button", { name: /^Confirm delete capability/ })
+    .click();
+  await page.getByText("No saved capabilities yet.", { exact: true }).waitFor();
+  const numericContract = {
+    ...contract,
+    id: "numeric_search",
+    inputs: [{ name: "query", type: "number", description: "Numeric query" }],
+  };
+  await mkdir(join(directory, "capabilities/fixture/numeric_search"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(directory, "capabilities/fixture/numeric_search/v1.json"),
+    JSON.stringify(numericContract),
+  );
+  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  const numeric = page.getByPlaceholder("Numeric query");
+  const sessionsBeforeBlank = (
+    await page.evaluate(() => window.awlAgent.state())
+  ).chats.length;
+  await numeric.fill("12");
+  await numeric.fill("");
+  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Enter a number for query." })
+    .waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.state())).chats.length,
+    sessionsBeforeBlank,
+  );
+  await numeric.fill("0");
+  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .getByText("results: Results: 0", { exact: false })
+    .waitFor({ timeout: 20000 });
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page.getByRole("button", { name: /^Delete capability/ }).click();
+  await page
+    .getByRole("button", { name: /^Confirm delete capability/ })
+    .click();
+  await page.getByText("No saved capabilities yet.", { exact: true }).waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.awlAgent.capabilities())).drafts.length,
+    0,
+  );
+  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await page.getByRole("tab", { name: "Capabilities", exact: true }).click();
+  await page.getByText("No saved capabilities yet.", { exact: true }).waitFor();
   console.log(
     "Workflow UI: validation, unlocked Run, fresh execution chats, asynchronous outputs, recording review and view preservation passed.",
   );

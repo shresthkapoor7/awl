@@ -1,11 +1,38 @@
-import { loadCapability, validationState } from "./executor.cjs";
-import { readdir, readFile, lstat } from "node:fs/promises";
-import { join } from "node:path";
+import {
+  capabilityPath,
+  loadCapability,
+  validationState,
+} from "./executor.cjs";
+import { readdir, readFile, lstat, rm, rmdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   capabilitySchema,
   legacyCapabilitySchema,
 } from "./tools/capability-write.cjs";
-import type { SavedCapability } from "../shared/agent.js";
+import type { CapabilityRef, SavedCapability } from "../shared/agent.js";
+export async function deleteCapabilityArtifacts(
+  root: string,
+  ref: CapabilityRef,
+) {
+  const directory = dirname(capabilityPath(root, ref));
+  // Do not follow links outside the app-owned capability namespace.
+  if (
+    !(await lstat(dirname(directory))).isDirectory() ||
+    !(await lstat(directory)).isDirectory()
+  )
+    throw new Error("Invalid capability directory.");
+  const versions = (await readdir(directory)).filter((name) =>
+    /^v\d+\.json$/.test(name),
+  );
+  const latest = Math.max(...versions.map((name) => Number(name.slice(1, -5))));
+  if (latest !== ref.version)
+    throw new Error(
+      "This capability changed. Reopen Capabilities before deleting it.",
+    );
+  await rm(directory, { recursive: true });
+  // An empty source folder must not consume a catalog slot forever.
+  await rmdir(dirname(directory)).catch(() => {});
+}
 export async function readCapabilityCatalog(
   root: string,
 ): Promise<SavedCapability[]> {

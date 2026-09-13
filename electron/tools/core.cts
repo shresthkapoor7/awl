@@ -19,6 +19,7 @@ export interface BrowserAccess {
   target(agentId: string, tabId: string): WebContents;
   onHumanInput?: (handler: (id: string) => void) => void;
   setOwner?: (id: string, owner: "human" | "agent") => void;
+  removeSession?: (id: string) => Promise<void> | void;
 }
 export type ToolContext = {
   agentId: string;

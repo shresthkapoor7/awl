@@ -39,7 +39,10 @@ try {
     if (wc.isLoading())
       await new Promise((resolve) => wc.once("did-stop-loading", resolve));
     globalThis.recordTab = state.activeTabId;
-    globalThis.recorder = new t.Recorder(t.browser, "record", () => {});
+    globalThis.recordPublications = [];
+    globalThis.recorder = new t.Recorder(t.browser, "record", (state) =>
+      globalThis.recordPublications.push(JSON.stringify(state)),
+    );
     await globalThis.recorder.start();
   }, base);
   const input = async (text) =>
@@ -59,9 +62,11 @@ try {
   let state = await app.evaluate(() => globalThis.recorder.state);
   assert.equal(state.mode, "review");
   assert.equal(state.steps.filter((s) => s.operation === "fill").length, 1);
-  assert.equal(
-    state.steps.find((s) => s.operation === "fill").value,
-    "first query",
+  assert.equal(state.steps.find((s) => s.operation === "fill").value, null);
+  assert(
+    !(
+      await app.evaluate(() => globalThis.recordPublications.join("\n"))
+    ).includes("first query"),
   );
   assert.equal(
     state.steps.find((s) => s.operation === "fill").target.kind,
@@ -188,10 +193,14 @@ try {
   );
   assert(
     state.steps.some(
-      (s) => s.operation === "fill" && s.value === "refined query",
+      (s) =>
+        s.operation === "fill" &&
+        s.target?.value === "Refine papers" &&
+        s.value === null,
     ),
     JSON.stringify(state),
   );
+  assert(!JSON.stringify(state).includes("refined query"));
   assert(
     !state.steps.some((s) => s.operation === "gap"),
     JSON.stringify(state),

@@ -43,12 +43,20 @@ export function fromChat(chat: AgentChat): Agent {
 export function blankAgent() {
   return fromChat({
     id: crypto.randomUUID(),
+    createdAt: Date.now(),
     name: "New agent",
     status: "idle",
     messages: [],
     tools: [],
     error: null,
   });
+}
+export function newestFirst(agents: Agent[]) {
+  return [...agents].sort(
+    (a, b) =>
+      (b.live.createdAt ?? 0) - (a.live.createdAt ?? 0) ||
+      a.id.localeCompare(b.id),
+  );
 }
 export function phaseLabel(phase: Phase) {
   return {

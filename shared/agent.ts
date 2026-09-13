@@ -25,6 +25,7 @@ export type ToolActivity = {
 };
 export type AgentChat = {
   id: string;
+  createdAt?: number;
   name: string;
   status: "idle" | "running" | "waiting" | "completed" | "error" | "stopped";
   control?: SessionControl;
@@ -64,6 +65,8 @@ export type SavedCapability = {
   contract: string;
 };
 export type AgentBridge = {
+  deleteSession: (id: string) => Promise<{ error?: string }>;
+  deleteCapability: (ref: CapabilityRef) => Promise<{ error?: string }>;
   create: (id: string) => Promise<{ chat?: AgentChat; error?: string }>;
   capabilities: () => Promise<{ drafts: SavedCapability[]; error?: string }>;
   state: () => Promise<{ enabled: boolean; model: string; chats: AgentChat[] }>;

@@ -20,12 +20,20 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type SetStateAction,
 } from "react";
-import { blankAgent, fromChat, phaseLabel, type Agent } from "./agents";
+import {
+  blankAgent,
+  fromChat,
+  newestFirst,
+  phaseLabel,
+  type Agent,
+} from "./agents";
 import { Capabilities } from "./components/Capabilities";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
 import { Conversation } from "./components/Conversation";
+import { DeleteButton } from "./components/DeleteButton";
 import { IconButton, Mark, StatusDot } from "./components/ui";
 import type { AgentChat } from "../shared/agent";
 
@@ -40,10 +48,28 @@ export function App() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [fallback] = useState(blankAgent);
   const [model, setModel] = useState("gpt-5.6-terra");
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    sessionStorage.getItem("awl-selected-chat"),
-  );
+  const [{ agents, selectedId }, setWorkspace] = useState<{
+    agents: Agent[];
+    selectedId: string | null;
+  }>(() => ({
+    agents: [],
+    selectedId: sessionStorage.getItem("awl-selected-chat"),
+  }));
+  function setAgents(update: SetStateAction<Agent[]>) {
+    setWorkspace((current) => ({
+      ...current,
+      agents: typeof update === "function" ? update(current.agents) : update,
+    }));
+  }
+  function setSelectedId(update: SetStateAction<string | null>) {
+    setWorkspace((current) => ({
+      ...current,
+      selectedId:
+        typeof update === "function" ? update(current.selectedId) : update,
+    }));
+  }
+  const deletedIds = useRef(new Set<string>());
+  const creatingBlank = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -69,7 +95,16 @@ export function App() {
     agents.find((item) => item.id === selectedId) ?? agents[0] ?? fallback;
   useEffect(() => {
     if (selectedId) sessionStorage.setItem("awl-selected-chat", selectedId);
+    else sessionStorage.removeItem("awl-selected-chat");
   }, [selectedId]);
+  useEffect(() => {
+    if (!ready || agents.length || startupError || creatingBlank.current)
+      return;
+    creatingBlank.current = true;
+    void newAgent().finally(() => {
+      creatingBlank.current = false;
+    });
+  }, [ready, agents.length, startupError]);
 
   useEffect(() => {
     const bridge = window.awlAgent;
@@ -82,12 +117,17 @@ export function App() {
     let active = true;
     const received = new Set<string>();
     function receive(chat: AgentChat) {
+      if (deletedIds.current.has(chat.id)) return;
       received.add(chat.id);
       if (!active) return;
       setAgents((current) =>
-        current.some((item) => item.id === chat.id)
-          ? current.map((item) => (item.id === chat.id ? fromChat(chat) : item))
-          : [...current, fromChat(chat)],
+        newestFirst(
+          current.some((item) => item.id === chat.id)
+            ? current.map((item) =>
+                item.id === chat.id ? fromChat(chat) : item,
+              )
+            : [fromChat(chat), ...current],
+        ),
       );
     }
     const unsubscribe = bridge.subscribe(receive);
@@ -137,8 +177,13 @@ export function App() {
         setCreateError(result.error ?? "Could not create a chat.");
         return;
       }
-      setAgents((current) => [...current, fromChat(result.chat!)]);
-    } else setAgents((current) => [...current, next]);
+      setAgents((current) =>
+        newestFirst([
+          fromChat(result.chat!),
+          ...current.filter((item) => item.id !== next.id),
+        ]),
+      );
+    } else setAgents((current) => newestFirst([next, ...current]));
     setStartupError(null);
     setSearch("");
     selectAgent(next.id);
@@ -161,6 +206,28 @@ export function App() {
       return false;
     }
     return true;
+  }
+  async function deleteSession(id: string) {
+    const result = window.awlAgent
+      ? await window.awlAgent
+          .deleteSession(id)
+          .catch(() => ({ error: "Could not delete this session." }))
+      : {};
+    if (result.error) {
+      setCreateError(result.error);
+      return;
+    }
+    deletedIds.current.add(id);
+    setWorkspace((current) => {
+      const remaining = current.agents.filter((item) => item.id !== id);
+      return {
+        agents: remaining,
+        selectedId: remaining.some((item) => item.id === current.selectedId)
+          ? current.selectedId
+          : (remaining[0]?.id ?? null),
+      };
+    });
+    setCreateError(null);
   }
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
@@ -365,34 +432,39 @@ export function App() {
                 item.name.toLowerCase().includes(search.toLowerCase()),
               )
               .map((item) => (
-                <button
-                  key={item.id}
-                  className={`agent-item ${item.id === selectedId ? "selected" : ""}`}
-                  aria-current={item.id === selectedId ? "page" : undefined}
-                  onClick={() => selectAgent(item.id)}
-                >
-                  <span className="agent-glyph">
-                    <Workflow size={17} />
-                  </span>
-                  <span className="agent-copy">
-                    <strong>{item.name}</strong>
-                    <span>
-                      <StatusDot
-                        active={
-                          item.phase === "waiting" ||
-                          item.phase === "human" ||
-                          item.phase === "replaying"
-                        }
-                      />
-                      {item.live && item.phase === "replaying"
-                        ? "Working"
-                        : phaseLabel(item.phase)}
+                <div className="agent-row" key={item.id}>
+                  <button
+                    className={`agent-item ${item.id === selectedId ? "selected" : ""}`}
+                    aria-current={item.id === selectedId ? "page" : undefined}
+                    onClick={() => selectAgent(item.id)}
+                  >
+                    <span className="agent-glyph">
+                      <Workflow size={17} />
                     </span>
-                  </span>
-                  {item.phase === "finished" && (
-                    <Check className="agent-check" size={12} />
-                  )}
-                </button>
+                    <span className="agent-copy">
+                      <strong>{item.name}</strong>
+                      <span>
+                        <StatusDot
+                          active={
+                            item.phase === "waiting" ||
+                            item.phase === "human" ||
+                            item.phase === "replaying"
+                          }
+                        />
+                        {item.live && item.phase === "replaying"
+                          ? "Working"
+                          : phaseLabel(item.phase)}
+                      </span>
+                    </span>
+                    {item.phase === "finished" && (
+                      <Check className="agent-check" size={12} />
+                    )}
+                  </button>
+                  <DeleteButton
+                    name={`session ${item.name}`}
+                    onDelete={() => deleteSession(item.id)}
+                  />
+                </div>
               ))}
             {!agents.some((item) =>
               item.name.toLowerCase().includes(search.toLowerCase()),
@@ -514,7 +586,7 @@ export function App() {
             setAgents((current) =>
               current.some((item) => item.id === chat.id)
                 ? current
-                : [...current, fromChat(chat)],
+                : newestFirst([fromChat(chat), ...current]),
             );
             selectAgent(chat.id);
             setBrowserOpen(true);

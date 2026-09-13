@@ -14,6 +14,20 @@ export type Demonstration = {
   steps: RecordedStep[];
   notice: string | null;
 };
+export function redactDemonstration(recording: Demonstration): Demonstration {
+  return {
+    ...recording,
+    steps: recording.steps.map((step) =>
+      ["fill", "select"].includes(step.operation)
+        ? {
+            ...step,
+            value: null,
+            target: step.target?.kind === "text" ? null : step.target,
+          }
+        : step,
+    ),
+  };
+}
 export type RunEvent = {
   sequence: number;
   at: string;

@@ -81,6 +81,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     return true;
   };
   const browsers = new Map<string, AgentBrowser>();
+  const deleted = new Set<string>();
   const launchId = randomUUID();
   let presentation: {
     agentId: string;
@@ -616,6 +617,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
   }
   function getBrowser(id: unknown): AgentBrowser {
     if (!identifier(id)) throw new Error("Invalid agent session.");
+    if (deleted.has(id)) throw new Error("This browser session was deleted.");
     const existing = browsers.get(id);
     if (existing) return existing;
     if (browsers.size >= 32)
@@ -812,7 +814,27 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       humanInput = handler;
     },
     setOwner: (id, owner) => {
-      owners.set(id, owner);
+      if (!deleted.has(id)) owners.set(id, owner);
+    },
+    async removeSession(id) {
+      const browser = browsers.get(id);
+      deleted.add(id);
+      owners.delete(id);
+      if (!browser) return;
+      if (presentation?.agentId === id) {
+        presentation = null;
+        detach();
+      }
+      const tabs = [...browser.tabs];
+      browser.tabs = [];
+      browsers.delete(id);
+      for (const tab of tabs) {
+        if (tab.preview) returnToWorkspace(browser, tab);
+        if (!tab.view.webContents.isDestroyed())
+          tab.view.webContents.close({ waitForBeforeUnload: false });
+      }
+      await browser.session.clearStorageData();
+      await browser.session.clearCache();
     },
     target: (agentId, tabId) => target(agentId, tabId).view.webContents,
     tabs(agentId, action, tabId) {
