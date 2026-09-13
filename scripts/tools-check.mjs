@@ -36,3 +36,26 @@ const pending = dispatch(
 );
 controller.abort(new Error("test stop"));
 await assert.rejects(pending, /test stop/);
+const { evidenceRead } =
+  await import("../dist-electron/electron/tools/evidence-read.cjs");
+assert.deepEqual(
+  (
+    await dispatch(evidenceRead, '{"evidence_id":7}', {
+      ...context,
+      evidence: (id) => (id === 7 ? { observed: "result" } : null),
+    })
+  ).data,
+  { observed: "result" },
+);
+assert.equal(
+  (await dispatch(evidenceRead, '{"evidence_id":7}', context)).error.code,
+  "EVIDENCE_EXPIRED",
+);
+assert.equal(
+  (await dispatch(evidenceRead, '{"evidence_id":7,"chat":"other"}', context))
+    .ok,
+  false,
+);
+console.log(
+  "Passed: exact evidence retrieval, expiration and current-chat scope.",
+);

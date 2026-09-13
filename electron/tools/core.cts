@@ -28,6 +28,7 @@ export type ToolContext = {
   signal: AbortSignal;
   ask?: (request: Omit<PendingQuestion, "id">) => { request_id: string };
   complete?: (summary: string) => void;
+  evidence?: (sequence: number) => unknown;
 };
 export type ToolOutput = { data: unknown; image?: string };
 export const toolSignal = new AsyncLocalStorage<AbortSignal>();
