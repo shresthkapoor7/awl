@@ -279,7 +279,8 @@ strong {
 }
 .agent-item.selected {
   background: var(--base);
-  border-color: var(--border);
+  border-color: #555;
+  box-shadow: inset 3px 0 #b0b0b0;
 }
 .agent-glyph {
   color: var(--muted);
