@@ -18,6 +18,7 @@ app.whenReady().then(async () => {
     actions: ["navigate", "click", "fill", "select", "press", "scroll"],
     safeControls: [],
     blockedControls: [],
+    sensitiveSelectors: ["[data-private]"],
   });
   const browser = installBrowser(window, policy);
   const present = (id) =>

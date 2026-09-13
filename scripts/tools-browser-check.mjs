@@ -22,9 +22,16 @@ const sensitiveFixtures = {
   "semantic-shadow": `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<span id="hint">CVV</span><input aria-labelledby="hint" value="fixture-secret">';</script>`,
   "semantic-frame": '<iframe src="/otp"></iframe>',
 };
+const privateFixtures = {
+  "private-shadow-field": `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<label>Full name<input value="Private Shadow Person"></label>';</script>`,
+  "private-nested-selector": `<div id="host"></div><script>const root=document.querySelector('#host').attachShadow({mode:'open'});root.innerHTML='<div id="inner"></div>';root.querySelector('#inner').attachShadow({mode:'open'}).innerHTML='<span data-private>Private Shadow Person</span>';</script>`,
+  "private-shadow-table": `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<table><tr><th>Full name</th><th>State</th></tr><tr><td>Private Shadow Person</td><td>Active</td></tr></table>';</script>`,
+  "private-shadow-label": `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<span id="label">Full name</span><input aria-labelledby="label" value="Private Shadow Person">';</script>`,
+};
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  const fixture = sensitiveFixtures[req.url.slice(1)];
+  const fixture =
+    sensitiveFixtures[req.url.slice(1)] ?? privateFixtures[req.url.slice(1)];
   if (fixture) {
     res.end(fixture);
     return;
@@ -44,6 +51,12 @@ const server = createServer((req, res) => {
   if (req.url === "/targets") {
     res.end(
       `<input placeholder="Search a paper"><button>Search</button><button>Duplicate</button><button>Duplicate</button><div id="host"></div><script>document.querySelector("#host").attachShadow({mode:"open"}).innerHTML='<input placeholder="Shadow search">';</script>`,
+    );
+    return;
+  }
+  if (req.url === "/public-shadow") {
+    res.end(
+      `<div id="host"></div><script>document.querySelector('#host').attachShadow({mode:'open'}).innerHTML='<label>Search<input value="public query"></label><label style="display:none">Full name<input value="Hidden Person"></label>';</script>`,
     );
     return;
   }
@@ -393,6 +406,41 @@ try {
       value,
     });
   };
+  for (const route of Object.keys(privateFixtures)) {
+    await call("browser-start", "browserStart", {
+      url: `${base}/${route}`,
+      tab_id: tabId,
+    });
+    const capture = await call("browser-screenshot", "browserScreenshot", {
+      tab_id: tabId,
+    });
+    assert.equal(capture.ok, false, route);
+    assert.equal(capture.error.code, "PRIVATE_SCREENSHOT", route);
+    assert.equal(
+      capture.image,
+      undefined,
+      "private image must never leave the capture tool",
+    );
+    const observation = await inspect();
+    assert.ok(observation.ok, JSON.stringify(observation));
+    assert.ok(
+      !JSON.stringify(observation.data).includes("Private Shadow Person"),
+    );
+  }
+  await call("browser-start", "browserStart", {
+    url: `${base}/public-shadow`,
+    tab_id: tabId,
+  });
+  assert.equal(
+    (await call("browser-screenshot", "browserScreenshot", { tab_id: tabId }))
+      .ok,
+    true,
+    "ordinary shadow content remains observable",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
   const fields = await inspect();
   const queryTarget = fields.data.elements.find(
     (e) => e.name === "Search",

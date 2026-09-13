@@ -103,49 +103,62 @@ export function privatePageValues(selectors: string[]): string[] {
     ).trim();
     if (text.length >= 3 && text.length <= 2000) values.add(text);
   };
-  for (const selector of selectors) {
-    try {
-      document.querySelectorAll(selector).forEach(add);
-    } catch {
-      throw new Error("Invalid privacy selector");
+  // Shadow content is rendered into screenshots too. Inspect each open root
+  // with its own label/selector scope, including nested web components.
+  const roots: (Document | ShadowRoot)[] = [document];
+  for (let index = 0; index < roots.length; index++) {
+    const root = roots[index];
+    root.querySelectorAll("*").forEach((el) => {
+      if (el.shadowRoot) roots.push(el.shadowRoot);
+    });
+    for (const selector of selectors) {
+      try {
+        root.querySelectorAll(selector).forEach(add);
+      } catch {
+        throw new Error("Invalid privacy selector");
+      }
     }
-  }
-  document.querySelectorAll("input,textarea").forEach((el) => {
-    const hints = [
-      el.getAttribute("name"),
-      el.getAttribute("autocomplete"),
-      el.getAttribute("aria-label"),
-      ...Array.from(
-        (el as HTMLInputElement).labels ?? [],
-        (label) => label.textContent,
-      ),
-    ]
-      .join(" ")
-      .replace(/[_-]/g, " ");
-    if (
-      privateLabel.test(hints) ||
-      /^(name|given-name|family-name|street-address|email|tel|bday)$/.test(
-        el.getAttribute("autocomplete") ?? "",
+    root.querySelectorAll("input,textarea").forEach((el) => {
+      const hints = [
+        el.getAttribute("name"),
+        el.getAttribute("autocomplete"),
+        el.getAttribute("aria-label"),
+        ...(el.getAttribute("aria-labelledby") ?? "")
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((id) => root.getElementById(id)?.textContent),
+        ...Array.from(
+          (el as HTMLInputElement).labels ?? [],
+          (label) => label.textContent,
+        ),
+      ]
+        .join(" ")
+        .replace(/[_-]/g, " ");
+      if (
+        privateLabel.test(hints) ||
+        /^(name|given-name|family-name|street-address|email|tel|bday)$/.test(
+          el.getAttribute("autocomplete") ?? "",
+        )
       )
-    )
-      add(el);
-  });
-  document.querySelectorAll("table").forEach((table) => {
-    const rows = Array.from(table.rows);
-    const headers = rows[0] ? Array.from(rows[0].cells) : [];
-    for (const row of rows) {
-      const cells = Array.from(row.cells);
-      if (cells.length === 2 && privateLabel.test(cells[0].textContent ?? ""))
-        add(cells[1]);
-      if (row !== rows[0])
-        headers.forEach((header, index) => {
-          if (
-            header.tagName === "TH" &&
-            privateLabel.test(header.textContent ?? "")
-          )
-            add(cells[index] ?? null);
-        });
-    }
-  });
+        add(el);
+    });
+    root.querySelectorAll("table").forEach((table) => {
+      const rows = Array.from(table.rows);
+      const headers = rows[0] ? Array.from(rows[0].cells) : [];
+      for (const row of rows) {
+        const cells = Array.from(row.cells);
+        if (cells.length === 2 && privateLabel.test(cells[0].textContent ?? ""))
+          add(cells[1]);
+        if (row !== rows[0])
+          headers.forEach((header, index) => {
+            if (
+              header.tagName === "TH" &&
+              privateLabel.test(header.textContent ?? "")
+            )
+              add(cells[index] ?? null);
+          });
+      }
+    });
+  }
   return [...values];
 }
