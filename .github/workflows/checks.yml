@@ -30,6 +30,7 @@ jobs:
       - name: Prepare Linux desktop
         if: runner.os == 'Linux'
         run: |
+          node -e 'require("electron")'
           npx playwright-core install-deps chromium
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox

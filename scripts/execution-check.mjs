@@ -10,7 +10,7 @@ let changed = false;
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.end(
-    `<input placeholder="Search papers"><button onclick="setTimeout(()=>document.querySelector('#result').textContent='Results: '+document.querySelector('input').value, 100)">${changed ? "Find" : "Search"}</button>${changed ? "<button>Search</button><button>Search</button>" : ""}<p id="result">Waiting</p>`,
+    `<input placeholder="Search papers"><button onclick="window.clicks=(window.clicks||0)+1;setTimeout(()=>document.querySelector('#result').textContent='Results: '+document.querySelector('input').value, 100)">${changed ? "Find" : "Search"}</button>${changed ? "<button>Search</button><button>Search</button>" : ""}<p id="result">Waiting</p>`,
   );
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -134,7 +134,22 @@ try {
         (_, id) => globalThis.runtime.list().find((c) => c.id === id),
         result.chat.id,
       );
-      if (chat.status !== "running") return chat;
+      if (chat.status !== "running") {
+        if (chat.status !== "completed")
+          console.log(
+            "Paused fixture",
+            await app.evaluate(async (_, id) => {
+              const t = globalThis.awlToolsTest;
+              const state = t.browser.tabs(id, "list", null);
+              return t.browser
+                .target(id, state.activeTabId)
+                .executeJavaScript(
+                  "JSON.stringify({clicks:window.clicks, visibility:document.visibilityState, value:document.querySelector('input')?.value, result:document.querySelector('#result')?.textContent})",
+                );
+            }, chat.id),
+          );
+        return chat;
+      }
       await new Promise((r) => setTimeout(r, 100));
     }
     throw new Error("Run did not settle: " + JSON.stringify(chat));
