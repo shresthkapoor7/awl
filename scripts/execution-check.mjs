@@ -86,8 +86,16 @@ try {
     globalThis.runtime = new t.AgentRuntime({
       client: {
         responses: {
-          create: async () => {
+          create: async (body) => {
             globalThis.modelCalls++;
+            if (globalThis.followup) {
+              globalThis.followupInput = body.input;
+              return {
+                status: "completed",
+                output_text: "We can discuss that result.",
+                output: [],
+              };
+            }
             if (!globalThis.repairDraft)
               throw new Error("Execution must not call the model");
             const n = globalThis.modelCalls;
@@ -167,6 +175,12 @@ try {
   const replay = await launch("another query", false);
   assert.equal(replay.status, "completed");
   assert.equal(replay.execution.outputs.results, "Results: another query");
+  const afterControl = await app.evaluate((_, id) => {
+    globalThis.runtime.takeover(id);
+    return globalThis.runtime.list().find((c) => c.id === id);
+  }, replay.id);
+  assert.equal(afterControl.status, "completed");
+  assert.equal(afterControl.pending, null);
   changed = true;
   const broken = await launch("changed page", false);
   assert.equal(broken.status, "waiting");
@@ -200,6 +214,29 @@ try {
   assert.equal((await launch("repair second")).status, "completed");
   assert.equal((await launch("repaired replay", false)).status, "completed");
   assert.equal(await app.evaluate(() => globalThis.modelCalls), 3);
+  const followup = await app.evaluate((_, id) => {
+    globalThis.followup = true;
+    return globalThis.runtime.send(id, "Explain the result of that run");
+  }, replay.id);
+  assert.deepEqual(followup, {});
+  for (let n = 0; n < 100; n++) {
+    const chat = await app.evaluate(
+      (_, id) => globalThis.runtime.list().find((c) => c.id === id),
+      replay.id,
+    );
+    if (chat.status !== "running") {
+      assert.equal(chat.mode, "discovery");
+      assert.equal(chat.execution.status, "completed");
+      assert.equal(chat.messages.at(-1).text, "We can discuss that result.");
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.equal(await app.evaluate(() => globalThis.modelCalls), 4);
+  assert.match(
+    await app.evaluate(() => JSON.stringify(globalThis.followupInput)),
+    /Results: another query/,
+  );
   console.log(
     "Execution: two-input validation, zero-model runs, observed outputs, ambiguous-target pause and versioned repair passed.",
   );

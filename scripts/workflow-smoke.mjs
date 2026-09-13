@@ -105,7 +105,24 @@ try {
       .getByText(`results: Results: ${query}`, { exact: false })
       .waitFor({ timeout: 20000 });
     assert(await page.getByText(/Final checkpoint passed/).count());
+    await page
+      .locator(".conversation-header .phase-pill")
+      .getByText("Completed", { exact: true })
+      .waitFor();
+    assert(
+      await page
+        .locator(".agent-item.selected")
+        .getByText("Completed", { exact: true })
+        .isVisible(),
+    );
   }
+  await page.getByRole("button", { name: "Take control", exact: true }).click();
+  assert(
+    await page
+      .locator(".conversation-header .phase-pill")
+      .getByText("Completed", { exact: true })
+      .isVisible(),
+  );
   // Recording has a permanent header button and takes control itself.
   await page.getByRole("button", { name: "Record", exact: true }).click();
   await page.getByText("Recording demonstration", { exact: true }).waitFor();

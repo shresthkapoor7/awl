@@ -92,6 +92,87 @@ try {
   await store.remove("saved");
   assert.equal((await store.load()).length, 0);
   runtime.close();
+  // Restored capability chats remain conversational, while an interrupted
+  // browser run stays stopped and is never silently restarted by a message.
+  for (const status of ["completed", "paused"]) {
+    await store.save({
+      chat: {
+        ...chat,
+        id: status,
+        status: status === "completed" ? "completed" : "waiting",
+        pending: null,
+        mode: "execution",
+        execution: {
+          id: "search",
+          sourceChatId: "source",
+          version: 1,
+          status,
+          step: 4,
+          total: 5,
+          inputs: {},
+          outputs: {},
+          validation: true,
+          uncertain: false,
+          error: null,
+        },
+      },
+      history: [],
+    });
+  }
+  const conversations = new AgentRuntime({
+    client: {
+      responses: {
+        create: async () => ({
+          status: "completed",
+          output: [],
+          output_text: "Follow-up received.",
+        }),
+      },
+    },
+    browser: {},
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await conversations.ready;
+  assert.equal(
+    conversations.list().find((c) => c.id === "completed").status,
+    "completed",
+  );
+  assert.equal(
+    conversations.list().find((c) => c.id === "paused").status,
+    "stopped",
+  );
+  for (const id of ["completed", "paused"]) {
+    assert.deepEqual(conversations.send(id, "Discuss the previous result"), {});
+    for (
+      let n = 0;
+      n < 100 &&
+      conversations.list().find((c) => c.id === id).status === "running";
+      n++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    const after = conversations.list().find((c) => c.id === id);
+    assert.equal(after.mode, "discovery");
+    assert.equal(after.messages.at(-1).text, "Follow-up received.");
+    assert.equal(after.execution.status, id);
+  }
+  await conversations.store.flush();
+  conversations.close();
+  const reopened = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await reopened.ready;
+  assert.equal(reopened.list().find((c) => c.id === "paused").status, "idle");
+  assert.equal(
+    reopened.list().find((c) => c.id === "paused").mode,
+    "discovery",
+  );
+  reopened.close();
   console.log(
     "Context: exact-count compaction, opaque item preservation, interrupted call pairing, atomic persistence and private restart passed.",
   );

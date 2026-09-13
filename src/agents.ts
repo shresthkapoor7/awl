@@ -1,7 +1,14 @@
 import type { AgentChat } from "../shared/agent";
 // Motion states are projections of live session state, never timers in the UI.
 export type Phase =
-  "waiting" | "human" | "ready" | "replaying" | "finished" | "new";
+  | "waiting"
+  | "human"
+  | "ready"
+  | "replaying"
+  | "finished"
+  | "new"
+  | "stopped"
+  | "error";
 export type Agent = {
   id: string;
   name: string;
@@ -18,15 +25,19 @@ export function fromChat(chat: AgentChat): Agent {
     phase:
       chat.status === "running"
         ? "replaying"
-        : chat.status === "error" ||
-            chat.status === "stopped" ||
-            chat.status === "waiting"
-          ? "waiting"
-          : chat.status === "completed"
-            ? "finished"
-            : chat.messages.length
-              ? "ready"
-              : "new",
+        : chat.pending
+          ? chat.pending.reason === "demonstration"
+            ? "human"
+            : "waiting"
+          : chat.status === "stopped" || chat.status === "error"
+            ? chat.status
+            : chat.status === "waiting"
+              ? "waiting"
+              : chat.status === "completed"
+                ? "finished"
+                : chat.messages.length
+                  ? "ready"
+                  : "new",
   };
 }
 export function blankAgent() {
@@ -47,5 +58,7 @@ export function phaseLabel(phase: Phase) {
     replaying: "Working",
     finished: "Completed",
     new: "Not started",
+    stopped: "Stopped",
+    error: "Failed",
   }[phase];
 }

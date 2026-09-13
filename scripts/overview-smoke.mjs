@@ -94,7 +94,29 @@ try {
   await page.getByText("Done.", { exact: true }).waitFor();
   await overview.click();
   await ready();
-  await publish({ ...working, status: "error", error: "Needs input." });
+  await publish({ ...working, status: "error", error: "Run failed." });
+  await page
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='error']")
+    .waitFor();
+  await status("Research", "Failed");
+  await publish({ ...working, status: "stopped" });
+  await page
+    .getByRole("button", { name: "Open Research chat", exact: true })
+    .locator(".office-status[data-phase='stopped']")
+    .waitFor();
+  await status("Research", "Stopped");
+  await publish({
+    ...working,
+    status: "waiting",
+    pending: {
+      id: "help",
+      reason: "clarification",
+      question: "Which paper?",
+      choices: [],
+      expected_text: null,
+    },
+  });
   await page
     .getByRole("button", { name: "Open Research chat", exact: true })
     .locator(".office-status[data-phase='waiting']")
