@@ -1,5 +1,6 @@
 import { RunHistory } from "./RunHistory";
 import { Demonstration } from "./Demonstration";
+import { RecordingControls } from "./RecordingControls";
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../agents";
@@ -71,6 +72,7 @@ export function Conversation({
       <header className="conversation-header">
         <h1>{agent.name}</h1>
         <div className="conversation-actions">
+          <RecordingControls key={agent.id} chat={agent.live} />
           {agent.messages.length > 0 && (
             <span className="phase-pill">
               <span />

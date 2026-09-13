@@ -25,35 +25,14 @@ export function Demonstration({ chat }: { chat: AgentChat }) {
       setBusy(false);
     }
   };
-  if (!chat.pending && !recording) return null;
+  if (!recording || recording.mode === "off") return null;
   return (
     <section className="human-request" aria-label="Demonstration">
-      <div className="request-choices">
-        <strong>
-          {recording?.mode === "recording"
-            ? "● Recording demonstration"
-            : "Teach awl"}
-        </strong>
-        {recording?.mode === "recording" ? (
-          <button disabled={busy} onClick={() => void act("pause")}>
-            Pause · private
-          </button>
-        ) : (
-          <button
-            disabled={busy || chat.status === "running"}
-            onClick={() => void act("start")}
-          >
-            Record
-          </button>
-        )}
-        {recording &&
-          recording.mode !== "off" &&
-          recording.mode !== "review" && (
-            <button disabled={busy} onClick={() => void act("stop")}>
-              Stop & review
-            </button>
-          )}
-      </div>
+      <strong>
+        {recording.mode === "recording"
+          ? "Recording demonstration"
+          : "Review demonstration"}
+      </strong>
       {recording?.mode === "review" && (
         <button
           className="text-button"

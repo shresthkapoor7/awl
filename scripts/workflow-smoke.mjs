@@ -84,6 +84,9 @@ const app = await electron.launch({
 });
 try {
   const page = await app.firstWindow();
+  assert(
+    await page.getByRole("button", { name: "Record", exact: true }).isVisible(),
+  );
   for (const [query, validate] of [
     ["first paper", true],
     ["second paper", true],
@@ -103,9 +106,9 @@ try {
       .waitFor({ timeout: 20000 });
     assert(await page.getByText(/Final checkpoint passed/).count());
   }
-  await page.getByRole("button", { name: "Take control", exact: true }).click();
+  // Recording has a permanent header button and takes control itself.
   await page.getByRole("button", { name: "Record", exact: true }).click();
-  await page.getByText("● Recording demonstration", { exact: true }).waitFor();
+  await page.getByText("Recording demonstration", { exact: true }).waitFor();
   await app.evaluate(async ({ webContents }, base) => {
     const wc = webContents
       .getAllWebContents()

@@ -878,6 +878,25 @@ strong {
   align-items: center;
   gap: 14px;
 }
+.recording-controls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.recording-error {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  padding: 10px;
+  background: var(--base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  z-index: 2;
+  font-size: 12px;
+}
 .stop-agent-button {
   display: inline-flex;
   align-items: center;
