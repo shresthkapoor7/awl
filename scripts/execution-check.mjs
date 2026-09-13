@@ -168,6 +168,51 @@ try {
     draft,
   );
   assert(saved.ok, JSON.stringify(saved));
+  const parallelValidation = await app.evaluate(
+    async (_, { draft, directory }) => {
+      const { Execution, validationState } = globalThis.awlToolsTest.Executor;
+      const artifact = {
+        draft,
+        hash: "concurrent-fixture",
+        path: `${directory}/concurrent`,
+      };
+      const make = (query) =>
+        new Execution(
+          artifact,
+          { id: draft.id, sourceChatId: "source", version: 1 },
+          { query },
+          true,
+          {
+            agentId: "source",
+            browser: {},
+            artifactDirectory: directory,
+            rename: () => {},
+          },
+          () => {},
+        );
+      await Promise.all(
+        Array.from({ length: 8 }, (_, index) =>
+          make(`input-${index}`).saveValidation(true),
+        ),
+      );
+      const successful = await validationState(artifact.path, artifact.hash);
+      // A real failure intentionally invalidates earlier proof. Later success
+      // must see that failure, not merge against an obsolete validated record.
+      await Promise.all([
+        make("failure").saveValidation(false),
+        make("after-failure").saveValidation(true),
+      ]);
+      return {
+        successful,
+        afterFailure: await validationState(artifact.path, artifact.hash),
+      };
+    },
+    { draft, directory },
+  );
+  assert.equal(parallelValidation.successful.cases.length, 8);
+  assert.equal(parallelValidation.successful.status, "validated");
+  assert.equal(parallelValidation.afterFailure.cases.length, 1);
+  assert.equal(parallelValidation.afterFailure.status, "draft");
   await app.evaluate((_, directory) => {
     globalThis.modelCalls = 0;
     const t = globalThis.awlToolsTest;

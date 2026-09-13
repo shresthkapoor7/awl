@@ -125,6 +125,18 @@ const cssTarget = (value: string): Target => ({
   shadow: [],
   within: null,
 });
+const validationWrites = new Map<string, Promise<void>>();
+async function serializeValidation(path: string, update: () => Promise<void>) {
+  const operation = (validationWrites.get(path) ?? Promise.resolve())
+    .catch(() => {})
+    .then(update);
+  validationWrites.set(path, operation);
+  try {
+    await operation;
+  } finally {
+    if (validationWrites.get(path) === operation) validationWrites.delete(path);
+  }
+}
 export class Execution {
   readonly state: ExecutionState;
   readonly plan: ReturnType<typeof compile>;
@@ -344,40 +356,45 @@ export class Execution {
       this.filled.set(fieldKey, String(this.state.inputs[step.input!]));
   }
   private async saveValidation(success: boolean) {
-    const prior = await validationState(this.artifact.path, this.artifact.hash);
-    const fingerprint = createHash("sha256")
-      .update(
-        JSON.stringify(
-          this.artifact.draft.inputs.map((field) => [
-            field.name,
-            this.state.inputs[field.name],
-          ]),
-        ),
-      )
-      .digest("hex");
-    const cases = [
-      ...new Set([
-        ...(success ? (prior?.cases ?? []) : []),
-        ...(success ? [fingerprint] : []),
-      ]),
-    ].slice(-20);
-    const value: Validation = {
-      hash: this.artifact.hash,
-      status:
-        success &&
-        (this.artifact.draft.inputs.length === 0 || cases.length >= 2)
-          ? "validated"
-          : success
-            ? "draft"
-            : "failed",
-      cases,
-      at: new Date().toISOString(),
-    };
-    const tmp = this.artifact.path + `.${randomUUID()}.tmp`;
-    await writeFile(tmp, JSON.stringify(value), { mode: 0o600 });
-    await rename(tmp, this.artifact.path + ".validation.json");
-    await writeFile(this.artifact.path + ".mjs", this.plan.code, {
-      mode: 0o600,
+    return serializeValidation(this.artifact.path, async () => {
+      const prior = await validationState(
+        this.artifact.path,
+        this.artifact.hash,
+      );
+      const fingerprint = createHash("sha256")
+        .update(
+          JSON.stringify(
+            this.artifact.draft.inputs.map((field) => [
+              field.name,
+              this.state.inputs[field.name],
+            ]),
+          ),
+        )
+        .digest("hex");
+      const cases = [
+        ...new Set([
+          ...(success ? (prior?.cases ?? []) : []),
+          ...(success ? [fingerprint] : []),
+        ]),
+      ].slice(-20);
+      const value: Validation = {
+        hash: this.artifact.hash,
+        status:
+          success &&
+          (this.artifact.draft.inputs.length === 0 || cases.length >= 2)
+            ? "validated"
+            : success
+              ? "draft"
+              : "failed",
+        cases,
+        at: new Date().toISOString(),
+      };
+      const tmp = this.artifact.path + `.${randomUUID()}.tmp`;
+      await writeFile(tmp, JSON.stringify(value), { mode: 0o600 });
+      await rename(tmp, this.artifact.path + ".validation.json");
+      await writeFile(this.artifact.path + ".mjs", this.plan.code, {
+        mode: 0o600,
+      });
     });
   }
 }
