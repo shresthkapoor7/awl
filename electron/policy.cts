@@ -14,6 +14,7 @@ export const policySchema = z.strictObject({
     origin: z.string().url(), path: z.string().startsWith("/"),
     selector: z.string().min(1).max(500), actions: z.array(actions),
   })),
+  sensitiveSelectors: z.array(z.string().min(1).max(500)).default([]),
   blockedControls: z.array(z.string().min(1).max(500)),
 });
 export type PolicyConfig = z.infer<typeof policySchema>;

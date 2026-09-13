@@ -1,3 +1,4 @@
+import { rememberPrivate, privatePageValues } from "../privacy.cjs";
 import { policyFor } from "../policy.cjs";
 import type { WebContents } from "electron";
 import { ToolError, toolSignal } from "./core.cjs";
@@ -83,6 +84,7 @@ export async function observable(wc: WebContents) {
         "SENSITIVE_PAGE",
         "Authentication or payment fields are visible. Stop observation and ask the user to complete them in the browser.",
       );
+    rememberPrivate(await inPage(wc, frame.id, privatePageValues, policyFor(wc)?.config.sensitiveSelectors ?? []));
   }
   return list;
 }

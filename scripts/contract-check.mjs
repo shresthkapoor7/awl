@@ -23,3 +23,14 @@ assert.throws(() => policy.assertAction("click", null, facts), /not declared saf
 policy.assertAction("click", null, { ...facts, allowed: true });
 assert.throws(() => policy.assertAction("click", null, { ...facts, allowed: true, text: "POST SHARE + TRANSFER" }), /human operation/);
 assert.throws(() => policy.assertAction("click", null, { ...facts, href: "https://elsewhere.test/" }), /outside/);
+
+const { rememberPrivate, redactData, assertPublicArtifact, safeStoredSession } = require("../dist-electron/electron/privacy.cjs");
+rememberPrivate(["Avery Testperson", "42 Example Lane"]);
+assert.deepEqual(redactData({ name: "Avery Testperson", email: "avery@example.test", image: "data:image/png;base64,abc" }), { name: "[private]", email: "[private]" });
+assert.throws(() => assertPublicArtifact({ target: "Avery Testperson" }));
+assertPublicArtifact({ target: "{{member_id}}" });
+const safe = safeStoredSession({ chat: { id: "private-check", name: "Find Avery Testperson", status: "completed", messages: [{ id: "m", role: "assistant", text: "Email avery@example.test" }], tools: [], error: null, journal: [{ sequence: 1, at: "now", actor: "agent", kind: "tool", label: "browser_dom", data: { raw: "unknown private text" }, image: "data:image/png;base64,raw" }] }, history: [{ type: "compaction", id: "hidden", encrypted_content: "uninspectable" }] });
+assert.ok(!JSON.stringify(safe).includes("unknown private text"));
+assert.ok(!JSON.stringify(safe).includes("uninspectable"));
+assert.ok(!JSON.stringify(safe).includes("avery@example.test"));
+assert.equal(safe.history[0].content, "Email [private]");

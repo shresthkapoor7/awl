@@ -1,3 +1,5 @@
+import { privatePageValues } from "./privacy.cjs";
+import { policyFor } from "./policy.cjs";
 import type { WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import type { BrowserAccess } from "./tools/core.cjs";
@@ -22,6 +24,7 @@ function installRecorder({
   const g = globalThis as typeof globalThis & {
     __awlTargeting: TargetingRuntime;
     __awlSensitive: () => boolean;
+    __awlPrivate: () => string[];
     __awlRecorder?: {
       generation: string;
       queue: Partial<RecordedStep>[];
@@ -98,6 +101,10 @@ function installRecorder({
       at: new Date().toISOString(),
       outcome: "Observed human action; result not yet verified.",
     };
+    if (step.target && g.__awlPrivate().some((value) => JSON.stringify(step.target).includes(JSON.stringify(value).slice(1, -1)))) {
+      step.target = null;
+      step.outcome = "Private target text omitted; inspect a structural or parameterized target before replay.";
+    }
     // Deliver before navigation can destroy this document. The queue is a
     // fallback if the native binding is briefly unavailable.
     const deliver = (globalThis as any)[binding];
@@ -348,7 +355,7 @@ export class Recorder {
         name: binding,
         executionContextName: "awl-tools",
       });
-      const source = `globalThis.__awlTargeting = (${targetingRuntime.toString()})(); globalThis.__awlSensitive = (${pageIsSensitive.toString()}); (${installRecorder.toString()})(${JSON.stringify({ generation, binding })});`;
+      const source = `globalThis.__awlTargeting = (${targetingRuntime.toString()})(); globalThis.__awlSensitive = (${pageIsSensitive.toString()}); globalThis.__awlPrivate = () => (${privatePageValues.toString()})(${JSON.stringify(policyFor(wc)?.config.sensitiveSelectors ?? [])}); (${installRecorder.toString()})(${JSON.stringify({ generation, binding })});`;
       // Retain the identifier even when Stop arrives while CDP is responding,
       // so a late registration can always be removed.
       const result = await wc.debugger.sendCommand(

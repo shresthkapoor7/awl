@@ -1,3 +1,4 @@
+import { redactData } from "../privacy.cjs";
 import { observationURL } from "./observation-url.cjs";
 import {
   installTargeting,
@@ -167,7 +168,7 @@ export const browserDom = defineTool(
     );
     registerSnapshot(wc, frame.id, snapshotId);
     return {
-      data: {
+      data: redactData({
         tab_id,
         frame_id: frame.id,
         url: observationURL(frame.url),
@@ -188,7 +189,7 @@ export const browserDom = defineTool(
               }
             : null,
         })),
-      },
+      }),
     };
   },
 );

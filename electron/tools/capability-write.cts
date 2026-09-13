@@ -1,3 +1,4 @@
+import { assertPublicArtifact } from "../privacy.cjs";
 import { parameterNames } from "../../shared/bindings.js";
 import { targetSchema } from "../../shared/target.js";
 import { z } from "zod";
@@ -268,6 +269,8 @@ const writeTool = defineTool(
   capabilitySchema,
   async (draft, context) => {
     validateCapability(draft);
+    try { assertPublicArtifact(draft); }
+    catch { throw new ToolError("PRIVATE_ARTIFACT", "Private literals cannot be saved. Use input bindings or structural targets."); }
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(context.agentId))
       throw new ToolError("INVALID_SESSION", "Invalid chat identity.");
     context.signal.throwIfAborted();

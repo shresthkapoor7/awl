@@ -181,8 +181,8 @@ try {
     ["valid"],
   );
   assert.deepEqual(
-    (await new WorkspaceStore(corruptDirectory).load())[0].history[0],
-    opaque,
+    (await new WorkspaceStore(corruptDirectory).load())[0].history,
+    chat.messages.map((message) => ({ role: message.role, content: message.text })),
   );
   corruptRuntime.close();
   await rm(corruptDirectory, { recursive: true });
@@ -236,7 +236,7 @@ try {
   assert.deepEqual(await readdir(directory), ["saved.json"]);
   assert.equal(
     JSON.parse(await readFile(join(directory, "saved.json"))).history.length,
-    2,
+    chat.messages.length,
   );
   await store.remove("saved");
   assert.equal((await store.load()).length, 0);
