@@ -6,7 +6,15 @@ delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: ["."],
+  args:
+    process.platform === "linux" && process.env.CI
+      ? [
+          ".",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          "--enable-unsafe-swiftshader",
+        ]
+      : ["."],
   env,
 });
 try {
