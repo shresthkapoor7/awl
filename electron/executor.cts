@@ -14,6 +14,7 @@ import {
   abortable,
   type ToolContext,
 } from "./tools/core.cjs";
+import { bindTarget, bindText } from "../shared/bindings.js";
 import type { Target } from "../shared/target.js";
 import type { ExecutionState, CapabilityRef } from "../shared/agent.js";
 
@@ -236,9 +237,15 @@ export class Execution {
     this.changed();
   }
   private async step(
-    step: CapabilityDraft["steps"][number],
+    rawStep: CapabilityDraft["steps"][number],
     signal: AbortSignal,
   ): Promise<void> {
+    const step = {
+      ...rawStep,
+      target: rawStep.target ? bindTarget(rawStep.target, this.state.inputs) : null,
+      selector: rawStep.selector ? bindText(rawStep.selector, this.state.inputs, true) : null,
+      value: rawStep.operation === "assert_text" && rawStep.value ? bindText(rawStep.value, this.state.inputs) : rawStep.value,
+    };
     const ctx = { ...this.context, signal };
     if (step.operation === "navigate") {
       this.filled.clear();
@@ -296,7 +303,7 @@ export class Execution {
       } catch (error) {
         if (
           !(error instanceof ToolError) ||
-          !["TARGET_MISSING", "CHECKPOINT_MISSING", "PAGE_CHANGED"].includes(
+          !["TARGET_MISSING", "FRAME_MISSING", "CHECKPOINT_MISSING", "PAGE_CHANGED"].includes(
             error.code,
           )
         )
@@ -351,7 +358,7 @@ export class Execution {
           new Promise((resolve) => setTimeout(resolve, 150)),
           signal,
         );
-        return this.step(step, signal);
+        return this.step(rawStep, signal);
       }
       if (
         error instanceof ToolError &&
@@ -380,10 +387,10 @@ export class Execution {
     for (const handler of this.artifact.draft.handlers ?? []) {
       if (handler.before_step !== this.state.step) continue;
       try {
-        const observation = await resolveTarget(wc, handler.when);
-        if (observation.text.includes(handler.text)) matches.push(handler);
+        const observation = await resolveTarget(wc, bindTarget(handler.when, this.state.inputs));
+        if (observation.text.includes(bindText(handler.text, this.state.inputs))) matches.push(handler);
       } catch (error) {
-        if (!(error instanceof ToolError) || !["TARGET_MISSING", "PAGE_CHANGED"].includes(error.code)) throw error;
+        if (!(error instanceof ToolError) || !["TARGET_MISSING", "FRAME_MISSING", "PAGE_CHANGED"].includes(error.code)) throw error;
       }
     }
     if (!matches.length) return false;
@@ -401,7 +408,7 @@ export class Execution {
       throw new ToolError("RECOVERY_EXHAUSTED", `Recovery ${handler.id} reached its attempt limit.`);
     this.recoveryCounts.set(handler.id, count + 1);
     if (handler.action !== "wait") {
-      const target = await resolveTarget(wc, handler.target!);
+      const target = await resolveTarget(wc, bindTarget(handler.target!, this.state.inputs));
       this.uncertain = true;
       await browserAction.execute({
         tab_id: this.tabId, frame_id: target.frame_id, snapshot_id: target.snapshot_id,

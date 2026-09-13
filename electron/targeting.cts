@@ -77,6 +77,8 @@ export function targetingRuntime() {
           `${el.tagName.toLowerCase()}[${key}=${JSON.stringify(value)}]`,
         );
     }
+    if (el.matches('input[type="radio"],input[type="checkbox"]') && el.getAttribute("name") && el.getAttribute("value"))
+      candidates.push(`input[name=${JSON.stringify(el.getAttribute("name"))}][value=${JSON.stringify(el.getAttribute("value"))}]`);
     if (el.id) candidates.push(`#${CSS.escape(el.id)}`);
     return (
       candidates.find(
@@ -186,7 +188,7 @@ export async function targetFrame(wc: WebContents, target: Target) {
   );
   if (found.length !== 1)
     throw new ToolError(
-      "AMBIGUOUS_FRAME",
+      found.length ? "AMBIGUOUS_FRAME" : "FRAME_MISSING",
       "The recorded frame is missing or ambiguous.",
     );
   return found[0].id;

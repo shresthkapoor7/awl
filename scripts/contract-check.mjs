@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { bindText, bindTarget } = require("../dist-electron/shared/bindings.js");
+assert.equal(bindText("Member {{id}}", { id: "12345" }), "Member 12345");
+assert.equal(bindText("{{id}}", { id: "{{other}}" }), "{{other}}");
+assert.throws(() => bindText("{{unknown}}", { id: "12345" }));
+assert.throws(() => bindText("{{id}}", { id: "" }));
+const bound = bindTarget({ kind: "css", value: 'input[value="{{id}}"]', role: null, frame: null, shadow: [], within: null }, { id: '\"], body, [value=\"' });
+assert.ok(!bound.value.includes('], body'));
+assert.ok(bound.value.startsWith('input[value="\\22 '));
+console.log("Capability binding checks passed");

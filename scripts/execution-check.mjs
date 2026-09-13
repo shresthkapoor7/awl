@@ -119,7 +119,7 @@ try {
         }),
         step("assert_text", {
           target: target("css", "#result"),
-          value: "Submitted: NFL Sunday Ticket",
+          value: "Submitted: {{query}}",
         }),
       ],
       on_unknown_state: "pause_for_human",

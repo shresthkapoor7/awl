@@ -1,3 +1,4 @@
+import { parameterNames } from "../../shared/bindings.js";
 import { targetSchema } from "../../shared/target.js";
 import { z } from "zod";
 import { mkdir, readdir, writeFile, link, unlink } from "node:fs/promises";
@@ -116,11 +117,29 @@ export function validateCapability(draft: CapabilityDraft) {
       "INVALID_CAPABILITY",
       "Credentials and authentication values do not belong in capabilities.",
     );
+  const checkBinding = (text: string | null | undefined) => {
+    for (const name of parameterNames(text ?? ""))
+      if (!inputs.has(name)) throw new ToolError("INVALID_CAPABILITY", `Undeclared parameter: ${name}`);
+  };
+  const checkTarget = (target: z.infer<typeof targetSchema> | null | undefined) => {
+    if (!target) return;
+    checkBinding(target.value); checkBinding(target.within);
+    target.shadow.forEach(checkBinding);
+    if (parameterNames(target.role ?? "").length || parameterNames(target.frame?.url ?? "").length || parameterNames(target.frame?.name ?? "").length)
+      throw new ToolError("INVALID_CAPABILITY", "Frame identities and roles must remain literal.");
+  };
+  for (const step of draft.steps) {
+    checkTarget(step.target); checkBinding(step.selector);
+    if (step.operation === "assert_text") checkBinding(step.value);
+    else if (parameterNames(step.value ?? "").length)
+      throw new ToolError("INVALID_CAPABILITY", "Only text assertions and targets accept template bindings.");
+  }
   const handlerIds = new Set<string>();
   for (const handler of draft.handlers ?? []) {
     if (handlerIds.has(handler.id) || handler.before_step >= draft.steps.length)
       throw new ToolError("INVALID_CAPABILITY", "Handler IDs must be unique and reference an existing step.");
     handlerIds.add(handler.id);
+    checkTarget(handler.when); checkTarget(handler.target); checkBinding(handler.text);
     if (handler.disposition === "recover") {
       if (!handler.action || (handler.action !== "wait" && !handler.target) ||
           (handler.action === "wait" && handler.target) ||
@@ -245,7 +264,7 @@ export function validateCapability(draft: CapabilityDraft) {
 }
 const writeTool = defineTool(
   "capability_write",
-  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, observed target descriptions from browser_dom, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Use each observed target object including its frame and shadow scope. Set selector=null when providing target; keep target=null for navigation. CSS selectors are supported as a main-document fallback. Credentials must never be recorded. handlers is an array (or null) of observed exceptional states, scoped by zero-based before_step. Each has an observed when target and visible text, disposition outcome/recover/failure, stable id and message. Recovery may click/press a known control or wait, with at most three attempts; never repeat an uncertain write. Set unused action/target/key to null. Do not invent unobserved recovery branches. This saves a draft, not a replay-validated workflow.",
+  "Save a parameterized capability draft learned from observed browser steps. expected_version=0 creates v1; use the returned version for updates. Declare inputs/outputs, observed target descriptions from browser_dom, an initial navigation and final assert_text checkpoint. All nullable fields must be provided. Fill/select reference input names instead of storing entered values. Use each observed target object including its frame and shadow scope. Set selector=null when providing target; keep target=null for navigation. CSS selectors are supported as a main-document fallback. Credentials must never be recorded. Use {{input_name}} in target values, CSS scopes, and assert_text values to bind declared inputs; CSS substitutions are escaped as values, never selector fragments. For exact identity checks use a text target whose full value is the parameterized expected text. Frame identities and roles remain literal. handlers is an array (or null) of observed exceptional states, scoped by zero-based before_step. Each has an observed when target and visible text, disposition outcome/recover/failure, stable id and message. Recovery may click/press a known control or wait, with at most three attempts; never repeat an uncertain write. Set unused action/target/key to null. Do not invent unobserved recovery branches. This saves a draft, not a replay-validated workflow.",
   capabilitySchema,
   async (draft, context) => {
     validateCapability(draft);
