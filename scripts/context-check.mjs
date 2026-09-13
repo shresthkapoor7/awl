@@ -16,6 +16,7 @@ import {
 } from "../dist-electron/electron/context.cjs";
 import { WorkspaceStore } from "../dist-electron/electron/workspace-store.cjs";
 import { AgentRuntime } from "../dist-electron/electron/agent-runtime.cjs";
+import { rememberPrivate, redactText } from "../dist-electron/electron/privacy.cjs";
 const history = [
   {
     type: "function_call",
@@ -374,10 +375,6 @@ try {
     publish: () => {},
   });
   await deleting.ready;
-  const {
-    rememberPrivate,
-    redactText,
-  } = require("../dist-electron/electron/privacy.cjs");
   deleting.create("delete_retry");
   rememberPrivate(["Deletion private customer"], "delete_retry");
   await deleting.flush();
