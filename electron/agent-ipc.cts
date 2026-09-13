@@ -29,6 +29,9 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
         ? new OpenAI({ apiKey: key, timeout: 60000, maxRetries: 0 })
         : null,
     model,
+    storageDirectory: enabled
+      ? join(app.getPath("userData"), "workspace")
+      : undefined,
     browser,
     directory: join(app.getPath("userData"), "capabilities"),
     publish: (chat) => {
@@ -43,18 +46,21 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     )
       throw new Error("Agent access is restricted to the awl workspace.");
   }
-  ipcMain.handle("agent:state", (event) => {
+  ipcMain.handle("agent:state", async (event) => {
     authorize(event);
+    await runtime.ready;
     return { enabled, model, chats: runtime.list() };
   });
-  ipcMain.handle("agent:create", (event, id) => {
+  ipcMain.handle("agent:create", async (event, id) => {
     authorize(event);
+    await runtime.ready;
     if (typeof id !== "string") return { error: "Invalid chat identity." };
     const result = runtime.create(id);
     return "status" in result ? { chat: result } : result;
   });
   ipcMain.handle("agent:capabilities", async (event) => {
     authorize(event);
+    await runtime.ready;
     try {
       return {
         drafts: await readCapabilityCatalog(
@@ -65,8 +71,9 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       return { drafts: [], error: "Could not read saved capabilities." };
     }
   });
-  ipcMain.handle("agent:send", (event, input) => {
+  ipcMain.handle("agent:send", async (event, input) => {
     authorize(event);
+    await runtime.ready;
     if (!enabled) return { error: "AI is disabled in this test session." };
     if (
       !input ||
@@ -76,18 +83,21 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       return { error: "Invalid chat request." };
     return runtime.send(input.id, input.text);
   });
-  ipcMain.handle("agent:stop", (event, id) => {
+  ipcMain.handle("agent:stop", async (event, id) => {
     authorize(event);
+    await runtime.ready;
     if (typeof id === "string") runtime.stop(id);
   });
-  ipcMain.handle("agent:takeover", (event, id) => {
+  ipcMain.handle("agent:takeover", async (event, id) => {
     authorize(event);
+    await runtime.ready;
     return typeof id === "string"
       ? runtime.takeover(id)
       : { error: "Invalid chat." };
   });
-  ipcMain.handle("agent:resume", (event, input) => {
+  ipcMain.handle("agent:resume", async (event, input) => {
     authorize(event);
+    await runtime.ready;
     if (
       !input ||
       typeof input.id !== "string" ||
@@ -97,8 +107,69 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       return { error: "Invalid resume request." };
     return runtime.resume(input.id, input.requestId, input.answer);
   });
+  ipcMain.handle("agent:launch", async (event, input) => {
+    authorize(event);
+    await runtime.ready;
+    if (
+      !input ||
+      !input.ref ||
+      typeof input.ref !== "object" ||
+      !input.inputs ||
+      typeof input.inputs !== "object" ||
+      typeof input.validation !== "boolean"
+    )
+      return { error: "Invalid launch request." };
+    return runtime.launch(input.ref, input.inputs, input.validation);
+  });
+  ipcMain.handle("agent:repair", async (event, id) => {
+    authorize(event);
+    await runtime.ready;
+    return typeof id === "string"
+      ? runtime.repair(id)
+      : { error: "Invalid chat." };
+  });
+  ipcMain.handle("agent:record", async (event, input) => {
+    authorize(event);
+    await runtime.ready;
+    if (
+      !input ||
+      typeof input.id !== "string" ||
+      typeof input.action !== "string" ||
+      (input.stepId !== undefined && typeof input.stepId !== "string") ||
+      (input.parameters !== undefined &&
+        (!input.parameters ||
+          typeof input.parameters !== "object" ||
+          Object.keys(input.parameters).length > 200 ||
+          Object.values(input.parameters).some(
+            (value) => typeof value !== "string",
+          )))
+    )
+      return { error: "Invalid recording request." };
+    return runtime.record(
+      input.id,
+      input.action,
+      input.stepId,
+      input.parameters,
+    );
+  });
+  let quitting = false;
+  const beforeQuit = (event: Electron.Event) => {
+    if (quitting || !enabled) return;
+    event.preventDefault();
+    quitting = true;
+    runtime.close();
+    void runtime
+      .flush()
+      .catch(() => {})
+      .finally(() => app.quit());
+  };
+  app.on("before-quit", beforeQuit);
   window.once("closed", () => {
     runtime.close();
+    void runtime
+      .flush()
+      .finally(() => app.removeListener("before-quit", beforeQuit))
+      .catch(() => {});
     for (const name of [
       "agent:state",
       "agent:create",
@@ -107,6 +178,9 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       "agent:stop",
       "agent:takeover",
       "agent:resume",
+      "agent:record",
+      "agent:launch",
+      "agent:repair",
     ])
       ipcMain.removeHandler(name);
   });

@@ -494,6 +494,12 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     browser.active = tab.id;
     const wc = view.webContents;
     wc.on("before-input-event", (event, input) => {
+      if (
+        input.key === "Escape" &&
+        owners.get(browser.id) === "agent" &&
+        !automationInput.has(wc)
+      )
+        event.preventDefault();
       const workspaceShortcut =
         (input.meta || input.control) && ["KeyB", "KeyL"].includes(input.code);
       if (

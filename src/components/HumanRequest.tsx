@@ -3,9 +3,13 @@ import type { PendingQuestion } from "../../shared/agent";
 export function HumanRequest({
   agentId,
   request,
+  capture,
+  repair,
 }: {
   agentId: string;
   request: PendingQuestion;
+  capture?: string;
+  repair?: boolean;
 }) {
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +39,11 @@ export function HumanRequest({
     >
       <strong>Needs you</strong>
       <p>{request.question}</p>
-      <p className="private-notice">Private control · observation paused</p>
+      <p className="private-notice">
+        {capture === "recording"
+          ? "Recording your demonstration"
+          : "Private control · observation paused"}
+      </p>
       {request.reason !== "authentication" && (
         <>
           {!!request.choices.length && (
@@ -64,6 +72,25 @@ export function HumanRequest({
       <button className="primary-button" disabled={busy}>
         {busy ? "Checking…" : "Resume"}
       </button>
+      {repair && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const result = await window.awlAgent?.repair(agentId);
+              setError(result?.error ?? null);
+            } catch {
+              setError("Could not enter repair.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Repair with awl
+        </button>
+      )}
       {error && <p role="alert">{error}</p>}
     </form>
   );

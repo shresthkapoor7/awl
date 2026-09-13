@@ -1,3 +1,4 @@
+import { loadCapability, validationState } from "./executor.cjs";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -55,7 +56,12 @@ export async function readCapabilityCatalog(
           version !== Number(versions[0].slice(1, -5))
         )
           continue;
+        const ref = { id: draft.id, version, sourceChatId: chat.name };
+        const loaded = await loadCapability(root, ref);
+        const validation = await validationState(loaded.path, loaded.hash);
         drafts.push({
+          validation: validation?.status ?? "draft",
+          validationCases: validation?.cases.length ?? 0,
           id: draft.id,
           name: draft.name,
           description: draft.description,

@@ -12,11 +12,11 @@
     "start": "npm run build && node scripts/start.mjs",
     "typecheck": "tsc -p electron/tsconfig.json --noEmit && tsc --noEmit",
     "format": "prettier --write src electron scripts index.html vite.config.ts tsconfig.json package.json",
-    "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs",
+    "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs && node scripts/workflow-smoke.mjs",
     "build:electron": "tsc -p electron/tsconfig.json",
     "predev": "npm run build:electron",
-    "test:tools": "npm run build:electron && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs",
-    "test:all": "node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs"
+    "test:tools": "npm run build:electron && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs",
+    "test:all": "node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs && node scripts/workflow-smoke.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

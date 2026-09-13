@@ -9,6 +9,10 @@ app.whenReady().then(async () => {
   const browser = installBrowser(window);
   globalThis.awlToolsTest = {
     browser,
+    AgentRuntime: require("../dist-electron/electron/agent-runtime.cjs")
+      .AgentRuntime,
+    Executor: require("../dist-electron/electron/executor.cjs"),
+    Recorder: require("../dist-electron/electron/recorder.cjs").Recorder,
     resolveTarget: require("../dist-electron/electron/targeting.cjs")
       .resolveTarget,
     call: (file, name, args, agentId = "test") =>

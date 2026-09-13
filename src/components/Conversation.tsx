@@ -1,3 +1,5 @@
+import { RunHistory } from "./RunHistory";
+import { Demonstration } from "./Demonstration";
 import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { phaseLabel, type Agent } from "../agents";
@@ -111,7 +113,11 @@ export function Conversation({
           >
             <div className="message-person">
               <strong>{message.role === "user" ? "You" : "awl"}</strong>
-              {message.role === "assistant" && <span>{model}</span>}
+              {message.role === "assistant" && (
+                <span>
+                  {agent.live.mode === "execution" ? "Capability" : model}
+                </span>
+              )}
             </div>
             <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
           </article>
@@ -136,14 +142,32 @@ export function Conversation({
           <p className="live-agent-status" role="status">
             {agent.live.tools.at(-1)?.state === "running"
               ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
-              : "Thinking…"}
+              : agent.live.mode === "execution"
+                ? "Executing capability…"
+                : "Thinking…"}
           </p>
         )}
+        {agent.live.execution && (
+          <p className="live-agent-status">
+            {agent.live.execution.validation ? "Validation" : "Execution"} ·{" "}
+            {Math.min(
+              agent.live.execution.step + 1,
+              agent.live.execution.total,
+            )}
+            /{agent.live.execution.total} steps · {agent.live.execution.status}
+          </p>
+        )}
+        {!!agent.live.journal?.length && (
+          <RunHistory key={`history-${agent.id}`} events={agent.live.journal} />
+        )}
+        <Demonstration key={`demonstration-${agent.id}`} chat={agent.live} />
         {agent.live.pending && (
           <HumanRequest
             key={agent.live.pending.id}
             agentId={agent.id}
             request={agent.live.pending}
+            capture={agent.live.control?.capture}
+            repair={agent.live.mode === "execution"}
           />
         )}
         {(stopError || startupError || agent.live.error) && (

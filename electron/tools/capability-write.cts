@@ -126,6 +126,11 @@ export function validateCapability(draft: CapabilityDraft) {
           "Navigation must stay on the declared origin and omit credentials, queries, fragments, and unrelated fields.",
         );
     } else {
+      if (step.selector && step.target)
+        throw new ToolError(
+          "INVALID_CAPABILITY",
+          "Use one target strategy per step.",
+        );
       if (!step.selector?.trim() && !step.target)
         throw new ToolError(
           "INVALID_CAPABILITY",

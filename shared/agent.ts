@@ -1,3 +1,4 @@
+import type { Demonstration, RunEvent } from "./recording.js";
 export type PendingQuestion = {
   id: string;
   reason:
@@ -28,11 +29,33 @@ export type AgentChat = {
   status: "idle" | "running" | "waiting" | "completed" | "error" | "stopped";
   control?: SessionControl;
   pending?: PendingQuestion | null;
+  demonstration?: Demonstration;
+  execution?: ExecutionState;
+  mode?: "discovery" | "execution" | "repair";
+  journal?: RunEvent[];
+  contextTokens?: number;
   messages: AgentMessage[];
   tools: ToolActivity[];
   error: string | null;
 };
+export type CapabilityRef = {
+  id: string;
+  sourceChatId: string;
+  version: number;
+};
+export type ExecutionState = CapabilityRef & {
+  step: number;
+  total: number;
+  status: "running" | "paused" | "completed";
+  validation: boolean;
+  inputs: Record<string, string | number | boolean>;
+  outputs: Record<string, string>;
+  error: string | null;
+  uncertain: boolean;
+};
 export type SavedCapability = {
+  validation?: "draft" | "validated" | "failed";
+  validationCases?: number;
   id: string;
   name: string;
   description: string;
@@ -51,6 +74,18 @@ export type AgentBridge = {
     id: string,
     requestId: string,
     answer: string,
+  ) => Promise<{ error?: string }>;
+  launch: (
+    ref: CapabilityRef,
+    inputs: Record<string, unknown>,
+    validation: boolean,
+  ) => Promise<{ chat?: AgentChat; error?: string }>;
+  repair: (id: string) => Promise<{ error?: string }>;
+  record: (
+    id: string,
+    action: "start" | "pause" | "stop" | "remove" | "teach" | "reset",
+    stepId?: string,
+    parameters?: Record<string, string>,
   ) => Promise<{ error?: string }>;
   subscribe: (listener: (chat: AgentChat) => void) => () => void;
 };

@@ -1,3 +1,4 @@
+import { evidenceRead } from "./evidence-read.cjs";
 import { askUser } from "./ask-user.cjs";
 import { taskComplete } from "./task-complete.cjs";
 import { chatName } from "./chat-name.cjs";
@@ -10,6 +11,7 @@ import { browserWait } from "./browser-wait.cjs";
 import { capabilityWrite } from "./capability-write.cjs";
 import { capabilityRead } from "./capability-read.cjs";
 export const tools = [
+  evidenceRead,
   askUser,
   taskComplete,
   chatName,

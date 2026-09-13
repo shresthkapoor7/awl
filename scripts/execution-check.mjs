@@ -1,0 +1,195 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { _electron as electron } from "playwright-core";
+import { prepareElectron } from "./electron-runtime.mjs";
+const directory = await mkdtemp(join(tmpdir(), "awl-execution-"));
+let changed = false;
+const server = createServer((req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.end(
+    `<input placeholder="Search papers"><button onclick="setTimeout(()=>document.querySelector('#result').textContent='Results: '+document.querySelector('input').value, 100)">${changed ? "Find" : "Search"}</button>${changed ? "<button>Search</button><button>Search</button>" : ""}<p id="result">Waiting</p>`,
+  );
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const base = `http://127.0.0.1:${server.address().port}`;
+const env = { ...process.env, AWL_TEST_ARTIFACTS: directory };
+delete env.ELECTRON_RUN_AS_NODE;
+const app = await electron.launch({
+  executablePath: await prepareElectron(),
+  args: [resolve("scripts/tools-fixture.cjs")],
+  env,
+});
+const target = (kind, value, role = null) => ({
+  kind,
+  value,
+  role,
+  frame: null,
+  shadow: [],
+  within: null,
+});
+const step = (operation, options = {}) => ({
+  operation,
+  target: null,
+  selector: null,
+  input: null,
+  value: null,
+  output: null,
+  ...options,
+});
+try {
+  await app.firstWindow();
+  const draft = {
+    id: "search_papers",
+    name: "Search papers",
+    description: "Search and verify results",
+    origin: base,
+    expected_version: 0,
+    inputs: [{ name: "query", type: "string", description: "Paper query" }],
+    outputs: [
+      { name: "results", type: "string", description: "Visible results" },
+    ],
+    steps: [
+      step("navigate", { value: base + "/" }),
+      step("fill", {
+        target: target("placeholder", "Search papers"),
+        input: "query",
+      }),
+      step("click", { target: target("role", "Search", "button") }),
+      step("extract_text", {
+        target: target("css", "#result"),
+        output: "results",
+      }),
+      step("assert_text", {
+        target: target("css", "#result"),
+        value: "Results:",
+      }),
+    ],
+    on_unknown_state: "pause_for_human",
+  };
+  const saved = await app.evaluate(
+    async (_, draft) =>
+      globalThis.awlToolsTest.call(
+        "capability-write",
+        "capabilityWrite",
+        draft,
+        "source",
+      ),
+    draft,
+  );
+  assert(saved.ok, JSON.stringify(saved));
+  await app.evaluate((_, directory) => {
+    globalThis.modelCalls = 0;
+    const t = globalThis.awlToolsTest;
+    globalThis.runtime = new t.AgentRuntime({
+      client: {
+        responses: {
+          create: async () => {
+            globalThis.modelCalls++;
+            if (!globalThis.repairDraft)
+              throw new Error("Execution must not call the model");
+            const n = globalThis.modelCalls;
+            return {
+              status: "completed",
+              output_text: "",
+              output:
+                n < 3
+                  ? [
+                      {
+                        type: "function_call",
+                        id: `repair${n}`,
+                        call_id: `repair${n}`,
+                        name: n === 1 ? "capability_read" : "capability_write",
+                        arguments: JSON.stringify(
+                          n === 1
+                            ? { id: "search_papers", version: 1 }
+                            : globalThis.repairDraft,
+                        ),
+                        status: "completed",
+                      },
+                    ]
+                  : [],
+            };
+          },
+        },
+      },
+      browser: t.browser,
+      directory,
+      publish: () => {},
+    });
+  }, directory);
+  const ref = { sourceChatId: "source", id: draft.id, version: 1 };
+  async function launch(query, validation = true) {
+    const result = await app.evaluate(
+      (_, { ref, query, validation }) =>
+        globalThis.runtime.launch(ref, { query }, validation),
+      { ref, query, validation },
+    );
+    assert(result.chat, result.error);
+    let chat;
+    for (let n = 0; n < 160; n++) {
+      chat = await app.evaluate(
+        (_, id) => globalThis.runtime.list().find((c) => c.id === id),
+        result.chat.id,
+      );
+      if (chat.status !== "running") return chat;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error("Run did not settle: " + JSON.stringify(chat));
+  }
+  const blocked = await app.evaluate(
+    (_, ref) => globalThis.runtime.launch(ref, { query: "first" }, false),
+    ref,
+  );
+  assert(blocked.error);
+  const first = await launch("attention");
+  assert.equal(first.status, "completed", JSON.stringify(first));
+  assert.equal(first.execution.outputs.results, "Results: attention");
+  const second = await launch("transformers");
+  assert.equal(second.status, "completed", JSON.stringify(second));
+  const replay = await launch("another query", false);
+  assert.equal(replay.status, "completed");
+  assert.equal(replay.execution.outputs.results, "Results: another query");
+  changed = true;
+  const broken = await launch("changed page", false);
+  assert.equal(broken.status, "waiting");
+  assert.match(broken.execution.error, /AMBIGUOUS_TARGET/);
+  assert.equal(broken.execution.step, 2);
+  assert.equal(await app.evaluate(() => globalThis.modelCalls), 0);
+  // Explicit, versioned correction; old artifact stays pinned and unchanged.
+  const repaired = structuredClone(draft);
+  repaired.expected_version = 1;
+  repaired.steps[2].target.value = "Find";
+  await app.evaluate((_, repaired) => {
+    globalThis.repairDraft = repaired;
+  }, repaired);
+  const repair = await app.evaluate(
+    (_, id) => globalThis.runtime.repair(id),
+    broken.id,
+  );
+  assert(!repair.error, repair.error);
+  for (let n = 0; n < 100; n++) {
+    const current = await app.evaluate(
+      (_, id) => globalThis.runtime.list().find((c) => c.id === id),
+      broken.id,
+    );
+    if (current.status !== "running") break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.equal(await app.evaluate(() => globalThis.modelCalls), 3);
+  ref.sourceChatId = broken.id;
+  ref.version = 2;
+  assert.equal((await launch("repair first")).status, "completed");
+  assert.equal((await launch("repair second")).status, "completed");
+  assert.equal((await launch("repaired replay", false)).status, "completed");
+  assert.equal(await app.evaluate(() => globalThis.modelCalls), 3);
+  console.log(
+    "Execution: two-input validation, zero-model runs, observed outputs, ambiguous-target pause and versioned repair passed.",
+  );
+} finally {
+  await app.close();
+  await new Promise((r) => server.close(r));
+  await rm(directory, { recursive: true, force: true });
+}

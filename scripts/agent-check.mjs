@@ -86,7 +86,7 @@ assert.equal(runtime.list()[0].messages.at(-1).text, "Ready.");
 assert.equal(calls[0].model, TERRA_MODEL);
 assert.equal(calls[0].parallel_tool_calls, false);
 assert.equal(calls[0].store, false);
-assert.equal(calls[0].tools.length, 11);
+assert.equal(calls[0].tools.length, 12);
 assert.ok(
   calls[0].tools.every(
     (tool) => tool.strict && tool.parameters.additionalProperties === false,
@@ -155,6 +155,7 @@ const late = new AgentRuntime({
   },
 });
 late.send("late", "Name the chat");
+while (!resolveLate) await setTimeout(0);
 late.stop("late");
 resolveLate({
   status: "completed",
