@@ -77,14 +77,8 @@ export function targetingRuntime() {
           `${el.tagName.toLowerCase()}[${key}=${JSON.stringify(value)}]`,
         );
     }
-    if (
-      el.matches('input[type="radio"],input[type="checkbox"]') &&
-      el.getAttribute("name") &&
-      el.getAttribute("value")
-    )
-      candidates.push(
-        `input[name=${JSON.stringify(el.getAttribute("name"))}][value=${JSON.stringify(el.getAttribute("value"))}]`,
-      );
+    // A control's value is user/business data, not a structural identifier.
+    // Repeated radio/checkbox names should fall back to a unique role/label.
     if (el.id) candidates.push(`#${CSS.escape(el.id)}`);
     return (
       candidates.find(
