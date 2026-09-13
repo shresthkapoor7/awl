@@ -70,7 +70,6 @@ export function targetingRuntime() {
   const css = (el: Element): string | null => {
     const root = el.getRootNode() as Document | ShadowRoot;
     const candidates: string[] = [];
-    if (el.id) candidates.push(`#${CSS.escape(el.id)}`);
     for (const key of ["data-testid", "data-test", "name"]) {
       const value = el.getAttribute(key);
       if (value)
@@ -78,6 +77,7 @@ export function targetingRuntime() {
           `${el.tagName.toLowerCase()}[${key}=${JSON.stringify(value)}]`,
         );
     }
+    if (el.id) candidates.push(`#${CSS.escape(el.id)}`);
     return (
       candidates.find(
         (candidate) => root.querySelectorAll(candidate).length === 1,
@@ -133,7 +133,8 @@ export function targetingRuntime() {
     const base = { frame: null, shadow, within: null, role: null };
     const candidates: Target[] = [];
     const selector = css(el);
-    if (selector) candidates.push({ ...base, kind: "css", value: selector });
+    if (selector && !selector.startsWith("#"))
+      candidates.push({ ...base, kind: "css", value: selector });
     const name = label(el);
     if (role(el) && name && name.length <= 500)
       candidates.push({ ...base, kind: "role", role: role(el), value: name });
@@ -142,6 +143,8 @@ export function targetingRuntime() {
     const placeholder = el.getAttribute("placeholder");
     if (placeholder && placeholder.length <= 500)
       candidates.push({ ...base, kind: "placeholder", value: placeholder });
+    if (selector?.startsWith("#"))
+      candidates.push({ ...base, kind: "css", value: selector });
     const content = text((el as HTMLElement).innerText || el.textContent);
     if (content && content.length <= 200)
       candidates.push({ ...base, kind: "text", value: content });
@@ -219,6 +222,11 @@ export async function resolveTarget(wc: WebContents, target: Target) {
       };
       return {
         count: 1,
+        inputValue:
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+            ? element.value.slice(0, 4000)
+            : null,
         text: (
           (element as HTMLElement).innerText ||
           element.textContent ||
@@ -239,5 +247,6 @@ export async function resolveTarget(wc: WebContents, target: Target) {
     snapshot_id: snapshotId,
     ref: "e0",
     text: result.text,
+    inputValue: result.inputValue ?? null,
   };
 }

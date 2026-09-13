@@ -130,6 +130,8 @@ export class Execution {
   readonly plan: ReturnType<typeof compile>;
   private tabId: string | null = null;
   private uncertain = false;
+  private filled = new Map<string, string>();
+  private lastObservation: ToolError | null = null;
   constructor(
     readonly artifact: Awaited<ReturnType<typeof loadCapability>>,
     ref: CapabilityRef,
@@ -167,6 +169,7 @@ export class Execution {
       for (; this.state.step < this.plan.plan.length;) {
         signal.throwIfAborted();
         this.uncertain = false;
+        this.lastObservation = null;
         const step = this.plan.plan[this.state.step];
         const deadline = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
         await toolSignal.run(deadline, () =>
@@ -181,6 +184,7 @@ export class Execution {
       for (const step of this.plan.plan.filter(
         (step) => step.operation === "extract_text",
       )) {
+        this.lastObservation = null;
         const deadline = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
         await toolSignal.run(deadline, () =>
           abortable(this.step(step, deadline), deadline),
@@ -196,7 +200,9 @@ export class Execution {
         ? "Run stopped. Check the page before continuing."
         : error instanceof ToolError
           ? `${error.code}: ${error.message}`
-          : "Step could not finish. Check the current page.";
+          : this.lastObservation
+            ? `${this.lastObservation.code}: ${this.lastObservation.message} Timed out waiting for step ${this.state.step + 1}.`
+            : "Step could not finish. Check the current page.";
       if (this.state.validation) await this.saveValidation(false);
     }
     this.changed();
@@ -204,9 +210,10 @@ export class Execution {
   private async step(
     step: CapabilityDraft["steps"][number],
     signal: AbortSignal,
-  ) {
+  ): Promise<void> {
     const ctx = { ...this.context, signal };
     if (step.operation === "navigate") {
+      this.filled.clear();
       const state = await ctx.browser.start(
         ctx.agentId,
         step.value!,
@@ -254,6 +261,7 @@ export class Execution {
             "CHECKPOINT_MISSING",
             "The expected result is not visible.",
           );
+        this.lastObservation = null;
         break;
       } catch (error) {
         if (
@@ -263,6 +271,7 @@ export class Execution {
           )
         )
           throw error;
+        this.lastObservation = error;
         await abortable(
           new Promise((resolve) => setTimeout(resolve, 150)),
           signal,
@@ -274,18 +283,65 @@ export class Execution {
       this.state.outputs[step.output!] = observed.text;
       return;
     }
+    const fieldKey = JSON.stringify(step.target ?? cssTarget(step.selector!));
+    if (
+      step.operation === "press" &&
+      this.filled.has(fieldKey) &&
+      observed.inputValue !== this.filled.get(fieldKey)
+    )
+      throw new ToolError(
+        "FIELD_VALUE_CHANGED",
+        "The field no longer contains the text entered by this run. The page may have reloaded or replaced it. Check the field before submitting.",
+      );
     this.uncertain = true;
-    await browserAction.execute(
-      {
-        tab_id: this.tabId,
-        frame_id: observed.frame_id,
-        snapshot_id: observed.snapshot_id,
-        ref: observed.ref,
-        action: step.operation,
-        value: step.input ? String(this.state.inputs[step.input]) : step.value,
-      },
-      ctx,
-    );
+    try {
+      await browserAction.execute(
+        {
+          tab_id: this.tabId,
+          frame_id: observed.frame_id,
+          snapshot_id: observed.snapshot_id,
+          ref: observed.ref,
+          action: step.operation,
+          value: step.input
+            ? String(this.state.inputs[step.input])
+            : step.value,
+        },
+        ctx,
+      );
+    } catch (error) {
+      // These errors occur before native input. Re-observe safely; never retry
+      // a timeout or an action that may already have reached the website.
+      if (
+        error instanceof ToolError &&
+        ["STALE_ELEMENT", "MOVING_ELEMENT"].includes(error.code)
+      ) {
+        this.uncertain = false;
+        this.lastObservation = error;
+        await abortable(
+          new Promise((resolve) => setTimeout(resolve, 150)),
+          signal,
+        );
+        return this.step(step, signal);
+      }
+      if (
+        error instanceof ToolError &&
+        [
+          "FOCUS_FAILED",
+          "HIDDEN_ELEMENT",
+          "DISABLED_ELEMENT",
+          "READ_ONLY",
+          "NOT_TEXT_INPUT",
+          "NOT_SELECT",
+          "SENSITIVE_ELEMENT",
+          "SENSITIVE_PAGE",
+          "OBSCURED_ELEMENT",
+        ].includes(error.code)
+      )
+        this.uncertain = false;
+      throw error;
+    }
+    if (step.operation === "fill")
+      this.filled.set(fieldKey, String(this.state.inputs[step.input!]));
   }
   private async saveValidation(success: boolean) {
     const prior = await validationState(this.artifact.path, this.artifact.hash);

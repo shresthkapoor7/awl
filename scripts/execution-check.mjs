@@ -9,6 +9,16 @@ const directory = await mkdtemp(join(tmpdir(), "awl-execution-"));
 let changed = false;
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
+  if (["/text-form", "/clear-field", "/replace-field"].includes(req.url)) {
+    const clear = req.url === "/clear-field";
+    const replace = req.url === "/replace-field";
+    res.end(`<textarea name="q" role="combobox" aria-label="Search"
+      ${clear ? `oninput="setTimeout(()=>{this.value='';document.querySelector('#ready').textContent='Ready'},100)"` : ""}
+      ${replace ? `onfocus="if(!window.replaced){window.replaced=true;const next=this.cloneNode(true);this.replaceWith(next);next.focus()}"` : ""}
+      onkeydown="if(event.key==='Enter'){event.preventDefault();window.submits=(window.submits||0)+1;document.querySelector('#result').textContent='Submitted: '+this.value}">old query</textarea>
+      <p id="ready">${clear ? "Waiting" : "Ready"}</p><p id="result">Waiting</p>`);
+    return;
+  }
   res.end(
     `<input placeholder="Search papers"><button onclick="window.clicks=(window.clicks||0)+1;setTimeout(()=>document.querySelector('#result').textContent='Results: '+document.querySelector('input').value, 100)">${changed ? "Find" : "Search"}</button>${changed ? "<button>Search</button><button>Search</button>" : ""}<p id="result">Waiting</p>`,
   );
@@ -41,6 +51,84 @@ const step = (operation, options = {}) => ({
 });
 try {
   await app.firstWindow();
+  for (const route of ["text-form", "clear-field", "replace-field"]) {
+    const field = target("css", 'textarea[name="q"]');
+    const fieldDraft = {
+      id: "text_field",
+      name: "Submit a text field",
+      description: "Verify text before submitting it",
+      origin: base,
+      expected_version: 0,
+      inputs: [{ name: "query", type: "string", description: "Search text" }],
+      outputs: [
+        { name: "result", type: "string", description: "Submitted text" },
+      ],
+      steps: [
+        step("navigate", { value: `${base}/${route}` }),
+        step("fill", { target: field, input: "query" }),
+        step("assert_text", {
+          target: target("css", "#ready"),
+          value: "Ready",
+        }),
+        step("press", { target: field, value: "Enter" }),
+        step("extract_text", {
+          target: target("css", "#result"),
+          output: "result",
+        }),
+        step("assert_text", {
+          target: target("css", "#result"),
+          value: "Submitted: NFL Sunday Ticket",
+        }),
+      ],
+      on_unknown_state: "pause_for_human",
+    };
+    const result = await app.evaluate(
+      async (_, { draft, route, directory }) => {
+        const t = globalThis.awlToolsTest;
+        const agentId = `field-${route}`;
+        const run = new t.Executor.Execution(
+          { draft, hash: "fixture", path: joinPath(directory, route) },
+          { id: draft.id, sourceChatId: agentId, version: 1 },
+          { query: "NFL Sunday Ticket" },
+          false,
+          {
+            agentId,
+            browser: t.browser,
+            artifactDirectory: directory,
+            rename: () => {},
+          },
+          () => {},
+        );
+        await run.run(AbortSignal.timeout(10000));
+        const tabs = t.browser.tabs(agentId, "list", null);
+        const submits = await t.browser
+          .target(agentId, tabs.activeTabId)
+          .executeJavaScript("window.submits || 0");
+        return { state: run.state, submits };
+        function joinPath(root, name) {
+          return `${root}/${name}`;
+        }
+      },
+      { draft: fieldDraft, route, directory },
+    );
+    if (route === "clear-field") {
+      assert.equal(result.state.status, "paused", JSON.stringify(result));
+      assert.match(result.state.error, /FIELD_VALUE_CHANGED/);
+      assert.equal(
+        result.submits,
+        0,
+        "Never submit a field whose text was lost",
+      );
+    } else {
+      assert.equal(result.state.status, "completed", JSON.stringify(result));
+      assert.equal(result.state.outputs.result, "Submitted: NFL Sunday Ticket");
+      assert.equal(
+        result.submits,
+        1,
+        "Replacement recovery must not duplicate input",
+      );
+    }
+  }
   const draft = {
     id: "search_papers",
     name: "Search papers",

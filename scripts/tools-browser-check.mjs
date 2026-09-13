@@ -35,6 +35,12 @@ const server = createServer((req, res) => {
     );
     return;
   }
+  if (req.url === "/fields") {
+    res.end(
+      `<textarea id="random_${Date.now()}" name="q" role="combobox" aria-label="Search" onkeydown="if(event.key==='Enter'){event.preventDefault();document.querySelector('#result').textContent=this.value}">old query</textarea><input aria-label="Quantity" type="number" value="42"><input aria-label="Rejected" oninput="this.value=''"><input aria-label="Focus trap" onfocus="document.querySelector('[name=q]').focus()"><p id="result"></p>`,
+    );
+    return;
+  }
   if (req.url === "/targets") {
     res.end(
       `<input placeholder="Search a paper"><button>Search</button><button>Duplicate</button><button>Duplicate</button><div id="host"></div><script>document.querySelector("#host").attachShadow({mode:"open"}).innerHTML='<input placeholder="Shadow search">';</script>`,
@@ -372,6 +378,50 @@ try {
     value: null,
   });
   assert.equal(coveredClick.error.code, "OBSCURED_ELEMENT");
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
+  const fieldAction = async (name, action, value) => {
+    const dom = await inspect();
+    return call("browser-action", "browserAction", {
+      tab_id: tabId,
+      frame_id: dom.data.frame_id,
+      snapshot_id: dom.data.snapshot_id,
+      ref: dom.data.elements.find((e) => e.name === name).ref,
+      action,
+      value,
+    });
+  };
+  const fields = await inspect();
+  const queryTarget = fields.data.elements.find(
+    (e) => e.name === "Search",
+  ).target;
+  assert.equal(queryTarget.value, 'textarea[name="q"]');
+  const typed = await fieldAction("Search", "fill", "NFL Sunday Ticket");
+  assert.equal(typed.ok, true, JSON.stringify(typed));
+  assert.equal(typed.data.value_verified, true);
+  assert.equal((await fieldAction("Search", "press", "Enter")).ok, true);
+  assert((await inspect()).data.text.includes("NFL Sunday Ticket"));
+  assert.equal((await fieldAction("Search", "fill", "")).ok, true);
+  assert.equal((await fieldAction("Quantity", "fill", "7")).ok, true);
+  assert.equal(
+    (await fieldAction("Rejected", "fill", "not retained")).error.code,
+    "FIELD_VALUE_CHANGED",
+  );
+  assert.equal(
+    (await fieldAction("Focus trap", "fill", "wrong field")).error.code,
+    "FOCUS_FAILED",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/fields`,
+    tab_id: tabId,
+  });
+  assert.equal(
+    (await resolve(queryTarget)).inputValue,
+    "old query",
+    "named target survives regenerated IDs",
+  );
   assert.equal(
     await app.evaluate(() => globalThis.nativeInterruptions),
     0,

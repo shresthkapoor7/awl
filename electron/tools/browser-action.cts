@@ -109,6 +109,15 @@ export const browserAction = defineTool(
         if (args.action === "select" && !(el instanceof HTMLSelectElement))
           return { error: "NOT_SELECT" };
         el.focus();
+        if (!el.isConnected) return { error: "STALE_ELEMENT" };
+        if (
+          ["fill", "press"].includes(args.action) &&
+          root.activeElement !== el
+        )
+          return { error: "FOCUS_FAILED" };
+        if (args.action === "fill")
+          (el as HTMLInputElement | HTMLTextAreaElement).select();
+        if (!el.isConnected) return { error: "STALE_ELEMENT" };
         if (args.action === "click") {
           // Layout can be ready before Chromium has submitted its hit-test regions.
           // Wait for stable painted frames before dispatching a single native click.
@@ -133,7 +142,10 @@ export const browserAction = defineTool(
           if (!hit || (hit !== el && !el.contains(hit)))
             return { error: "OBSCURED_ELEMENT" };
         }
-        return { error: null };
+        return {
+          error: null,
+          nativeSelect: el instanceof HTMLInputElement && el.type === "number",
+        };
       },
       args,
     );
@@ -207,18 +219,42 @@ export const browserAction = defineTool(
               .catch(() => {});
           }
         };
-        const select = {
-          key: "a",
-          code: "KeyA",
-          modifiers: process.platform === "darwin" ? 4 : 2,
-        };
-        await key({ ...select, commands: ["selectAll"] }, select);
+        // Number inputs do not expose DOM text selection APIs.
+        if (prepared.nativeSelect) {
+          const select = {
+            key: "a",
+            code: "KeyA",
+            modifiers: process.platform === "darwin" ? 4 : 2,
+          };
+          await key({ ...select, commands: ["selectAll"] }, select);
+        }
         if (args.value === "")
           await key(
             { key: "Backspace", windowsVirtualKeyCode: 8 },
             { key: "Backspace", windowsVirtualKeyCode: 8 },
           );
         else await cdp(wc, "Input.insertText", { text: args.value });
+        const retained = await inPage(
+          wc,
+          args.frame_id,
+          (args) => {
+            const holder = globalThis as typeof globalThis & {
+              __awlSnapshot?: PageSnapshot;
+            };
+            const entry = holder.__awlSnapshot?.nodes.get(args.ref);
+            return (
+              !!entry?.element.isConnected &&
+              (entry.element as HTMLInputElement | HTMLTextAreaElement)
+                .value === args.value
+            );
+          },
+          args,
+        );
+        if (!retained)
+          throw new ToolError(
+            "FIELD_VALUE_CHANGED",
+            "The field did not retain the entered text. The page may have replaced, cleared, or rejected it. Inspect the field before continuing.",
+          );
       } else if (args.action === "press") {
         const key = {
           key: args.value,
@@ -287,6 +323,7 @@ export const browserAction = defineTool(
     return {
       data: {
         dispatched: true,
+        ...(args.action === "fill" ? { value_verified: true } : {}),
         action: args.action,
         tab_id: args.tab_id,
         next: "Inspect the page to verify the result.",
