@@ -78,6 +78,52 @@ try {
     error: null,
   };
   const legacyDirectory = join(directory, "legacy");
+  const rawRecording = {
+    mode: "review",
+    notice: null,
+    steps: [
+      {
+        id: "entry",
+        at: new Date().toISOString(),
+        operation: "fill",
+        target: null,
+        value: "unrecognized-secret-entry",
+        url: null,
+        tab: 0,
+        outcome: "Observed action",
+      },
+    ],
+  };
+  const privatePath = join(directory, "private_record.json");
+  await writeFile(
+    privatePath,
+    JSON.stringify({
+      version: 1,
+      chat: { ...chat, id: "private_record", demonstration: rawRecording },
+      history: [],
+    }),
+  );
+  const redacted = await store.load();
+  assert.equal(
+    redacted.find((item) => item.chat.id === "private_record").chat
+      .demonstration.steps[0].value,
+    null,
+  );
+  assert(
+    !(await readFile(privatePath, "utf8")).includes(
+      "unrecognized-secret-entry",
+    ),
+  );
+  await store.save({
+    chat: { ...chat, id: "private_record", demonstration: rawRecording },
+    history: [],
+  });
+  assert(
+    !(await readFile(privatePath, "utf8")).includes(
+      "unrecognized-secret-entry",
+    ),
+  );
+  await store.remove("private_record");
   const corruptDirectory = join(directory, "corrupt");
   await mkdir(corruptDirectory);
   const corruptions = [

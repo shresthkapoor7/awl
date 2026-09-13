@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentChat } from "../shared/agent.js";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import { parseStoredSession } from "./stored-session.cjs";
+import { redactDemonstration } from "../shared/recording.js";
 export type StoredSession = { chat: AgentChat; history: ResponseInput };
 export class WorkspaceStore {
   private pending = Promise.resolve();
@@ -31,6 +32,17 @@ export class WorkspaceStore {
           JSON.parse(await readFile(path, "utf8")),
         );
         if (!saved || saved.chat.id !== file.slice(0, -5)) continue;
+        let migrated = false;
+        if (saved.chat.demonstration) {
+          migrated = saved.chat.demonstration.steps.some(
+            (step) =>
+              ["fill", "select"].includes(step.operation) &&
+              (step.value !== null || step.target?.kind === "text"),
+          );
+          saved.chat.demonstration = redactDemonstration(
+            saved.chat.demonstration,
+          );
+        }
         if (
           !Number.isFinite(saved.chat.createdAt) ||
           saved.chat.createdAt! <= 0
@@ -41,9 +53,10 @@ export class WorkspaceStore {
                 .find((at) => Number.isFinite(at) && at > 0)
             : undefined;
           saved.chat.createdAt = journalAt ?? info.mtimeMs;
-          // Freeze the migration value so the next atomic save cannot reorder it.
-          await this.save(saved).catch(() => {});
+          migrated = true;
         }
+        // Freeze migrated ordering and remove legacy entries before restoration.
+        if (migrated) await this.save(saved).catch(() => {});
         sessions.push(saved);
       } catch {
         /* An interrupted or corrupt file cannot authorize execution. */
@@ -54,7 +67,16 @@ export class WorkspaceStore {
   save(session: StoredSession) {
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(session.chat.id))
       return Promise.reject(new Error("Invalid session identity."));
-    const data = JSON.stringify({ version: 1, ...session });
+    const data = JSON.stringify({
+      version: 1,
+      ...session,
+      chat: {
+        ...session.chat,
+        ...(session.chat.demonstration
+          ? { demonstration: redactDemonstration(session.chat.demonstration) }
+          : {}),
+      },
+    });
     if (Buffer.byteLength(data) > 16_000_000)
       return Promise.reject(new Error("Session storage limit reached."));
     const id = session.chat.id;

@@ -747,7 +747,9 @@ export class AgentRuntime {
         const evidence = steps.map((step) => {
           let parameter = parameters[step.id];
           if (!parameter && ["fill", "select"].includes(step.operation)) {
-            const key = JSON.stringify([step.target, step.value]);
+            // Separate occurrences may need different values. Raw entries are
+            // intentionally unavailable, so do not infer equality from nulls.
+            const key = step.id;
             if (!inferred.has(key))
               inferred.set(key, `input_${inferred.size + 1}`);
             parameter = inferred.get(key)!;
