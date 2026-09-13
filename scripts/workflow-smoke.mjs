@@ -165,7 +165,7 @@ try {
   assert(
     await page.getByRole("button", { name: "Build capability" }).isVisible(),
   );
-  assert.equal(await page.getByText(/Run history ·/).count(), 1);
+  assert.equal(await page.locator(".run-history > summary").count(), 1);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/workflow-review.png" });
   const deletedId = await page.evaluate(() =>

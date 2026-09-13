@@ -90,7 +90,17 @@ export function TurnRail({
         ))}
       </div>
       {hovered && (
-        <div className="turn-preview" aria-hidden="true">
+        <div
+          className="turn-preview"
+          aria-hidden="true"
+          style={{
+            top: `${(turns.indexOf(hovered) / (turns.length - 1)) * 100}%`,
+            transform:
+              turns.indexOf(hovered) > turns.length / 2
+                ? "translateY(-100%)"
+                : undefined,
+          }}
+        >
           <strong>{hovered.text}</strong>
           {next?.role === "assistant" && <p>{next.text}</p>}
         </div>
