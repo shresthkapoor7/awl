@@ -29,6 +29,12 @@ const server = createServer((req, res) => {
     res.end(fixture);
     return;
   }
+  if (req.url === "/targets") {
+    res.end(
+      `<input placeholder="Search a paper"><button>Search</button><button>Duplicate</button><button>Duplicate</button><div id="host"></div><script>document.querySelector("#host").attachShadow({mode:"open"}).innerHTML='<input placeholder="Shadow search">';</script>`,
+    );
+    return;
+  }
   if (req.url === "/ordinary-numeric") {
     res.end(
       '<label>Quantity<input inputmode="numeric" value="4"></label><label>Postal code<input inputmode="numeric" value="10001"></label><input name="otp" type="hidden" value="fixture-secret">',
@@ -296,6 +302,55 @@ try {
     (await call("browser-screenshot", "browserScreenshot", { tab_id: tabId }))
       .ok,
     true,
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/targets`,
+    tab_id: tabId,
+  });
+  const targets = await inspect();
+  const searchTarget = targets.data.elements.find(
+    (el) => el.name === "Search a paper",
+  ).target;
+  const shadowTarget = targets.data.elements.find(
+    (el) => el.name === "Shadow search",
+  ).target;
+  assert.equal(searchTarget.kind, "placeholder");
+  assert.deepEqual(shadowTarget.shadow, ["#host"]);
+  const resolve = (target) =>
+    app.evaluate(
+      async (_, { target, tabId }) => {
+        const { resolveTarget } = globalThis.awlToolsTest;
+        try {
+          return await resolveTarget(
+            globalThis.awlToolsTest.browser.target("test", tabId),
+            target,
+          );
+        } catch (error) {
+          return { error: error.code };
+        }
+      },
+      { target, tabId },
+    );
+  assert.ok((await resolve(searchTarget)).snapshot_id);
+  assert.ok((await resolve(shadowTarget)).snapshot_id);
+  assert.equal(
+    (
+      await resolve({
+        ...searchTarget,
+        kind: "role",
+        role: "button",
+        value: "Duplicate",
+      })
+    ).error,
+    "AMBIGUOUS_TARGET",
+  );
+  await call("browser-start", "browserStart", {
+    url: `${base}/targets`,
+    tab_id: tabId,
+  });
+  assert.ok(
+    (await resolve(searchTarget)).snapshot_id,
+    "semantic target survives reload",
   );
   assert.equal(
     await app.evaluate(() => globalThis.nativeInterruptions),
