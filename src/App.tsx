@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type SetStateAction,
 } from "react";
 import {
   blankAgent,
@@ -47,11 +48,28 @@ export function App() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [fallback] = useState(blankAgent);
   const [model, setModel] = useState("gpt-5.6-terra");
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [{ agents, selectedId }, setWorkspace] = useState<{
+    agents: Agent[];
+    selectedId: string | null;
+  }>(() => ({
+    agents: [],
+    selectedId: sessionStorage.getItem("awl-selected-chat"),
+  }));
+  function setAgents(update: SetStateAction<Agent[]>) {
+    setWorkspace((current) => ({
+      ...current,
+      agents: typeof update === "function" ? update(current.agents) : update,
+    }));
+  }
+  function setSelectedId(update: SetStateAction<string | null>) {
+    setWorkspace((current) => ({
+      ...current,
+      selectedId:
+        typeof update === "function" ? update(current.selectedId) : update,
+    }));
+  }
   const deletedIds = useRef(new Set<string>());
-  const [selectedId, setSelectedId] = useState<string | null>(
-    sessionStorage.getItem("awl-selected-chat"),
-  );
+  const creatingBlank = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -77,7 +95,16 @@ export function App() {
     agents.find((item) => item.id === selectedId) ?? agents[0] ?? fallback;
   useEffect(() => {
     if (selectedId) sessionStorage.setItem("awl-selected-chat", selectedId);
+    else sessionStorage.removeItem("awl-selected-chat");
   }, [selectedId]);
+  useEffect(() => {
+    if (!ready || agents.length || startupError || creatingBlank.current)
+      return;
+    creatingBlank.current = true;
+    void newAgent().finally(() => {
+      creatingBlank.current = false;
+    });
+  }, [ready, agents.length, startupError]);
 
   useEffect(() => {
     const bridge = window.awlAgent;
@@ -191,13 +218,16 @@ export function App() {
       return;
     }
     deletedIds.current.add(id);
-    const remaining = agents.filter((item) => item.id !== id);
-    setAgents((current) => current.filter((item) => item.id !== id));
+    setWorkspace((current) => {
+      const remaining = current.agents.filter((item) => item.id !== id);
+      return {
+        agents: remaining,
+        selectedId: remaining.some((item) => item.id === current.selectedId)
+          ? current.selectedId
+          : (remaining[0]?.id ?? null),
+      };
+    });
     setCreateError(null);
-    if (agent.id === id) {
-      if (remaining.length) setSelectedId(remaining[0].id);
-      else await newAgent();
-    }
   }
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
