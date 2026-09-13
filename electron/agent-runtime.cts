@@ -473,7 +473,7 @@ export class AgentRuntime {
       );
       session.history.push({
         role: "user",
-        content: `Explicit repair request. Pinned source: ${JSON.stringify({ id: execution.state.id, sourceChatId: execution.state.sourceChatId, version: execution.state.version })}. Failed step ${execution.state.step + 1}: ${execution.state.error}. A copy is saved in this chat as v1. Read it with capability_read, investigate the same browser, ask for correction when necessary, then save a new draft version. Do not repeat uncertain writes. The repaired version must be validated through the UI before it can run. Preserve behavior outside the failed scenario.`,
+        content: `Explicit repair request. Pinned source: ${JSON.stringify({ id: execution.state.id, sourceChatId: execution.state.sourceChatId, version: execution.state.version })}. Input bindings (data): ${JSON.stringify(execution.state.inputs)}. Failed step ${execution.state.step + 1}: ${execution.state.error}. A copy is saved in this chat as v1. Read it with capability_read, investigate the same browser, ask for correction when necessary, then save a new draft version. Do not repeat uncertain writes. The repaired version must be validated through the UI before it can run. Preserve behavior outside the failed scenario.`,
       });
       this.executions.delete(id);
       session.chat.mode = "repair";
@@ -530,7 +530,8 @@ export class AgentRuntime {
             step.operation,
             `${step.operation}: ${step.target?.value ?? step.url ?? "Private interval"}`,
           );
-      } else if (action === "remove" && stepId) recorder.remove(stepId);
+      } else if (action === "reset") await recorder.reset();
+      else if (action === "remove" && stepId) recorder.remove(stepId);
       else if (action === "teach") {
         if (recorder.state.mode !== "review")
           return { error: "Stop and review the demonstration first." };

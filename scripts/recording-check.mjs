@@ -100,6 +100,24 @@ try {
       await app.evaluate(() => JSON.stringify(globalThis.recorder.state))
     ).includes("never-retain-this"),
   );
+  await app.evaluate(async (_, base) => {
+    const t = globalThis.awlToolsTest;
+    await t.browser.start(
+      "record",
+      base,
+      globalThis.recordTab,
+      AbortSignal.timeout(10000),
+    );
+    const wc = t.browser.target("record", globalThis.recordTab);
+    if (wc.isLoading())
+      await new Promise((resolve) => wc.once("did-stop-loading", resolve));
+    await globalThis.recorder.reset();
+    await globalThis.recorder.start();
+    await globalThis.recorder.stop();
+  }, base);
+  state = await app.evaluate(() => globalThis.recorder.state);
+  assert.equal(state.steps.length, 1);
+  assert.equal(state.steps[0].operation, "navigate");
   console.log(
     "Recording: coalesced input, final flush, target evidence, private gaps and sensitive-page gate passed.",
   );

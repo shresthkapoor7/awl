@@ -171,6 +171,12 @@ export class Recorder {
     await this.clearing;
     this.publish();
   }
+  async reset() {
+    await this.stop();
+    this.visited.clear();
+    this.state = { mode: "off", steps: [], notice: null };
+    this.publish();
+  }
   remove(stepId: string) {
     if (this.state.mode === "recording")
       throw new Error("Stop recording before editing.");
