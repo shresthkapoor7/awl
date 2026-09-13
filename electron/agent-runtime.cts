@@ -49,6 +49,7 @@ export class AgentRuntime {
   private recordingRequests = new Set<string>();
   private journal = new Journal();
   private sessions = new Map<string, Session>();
+  private lastCreatedAt = 0;
   constructor(
     private options: {
       client: Client | null;
@@ -70,6 +71,8 @@ export class AgentRuntime {
   private async restore() {
     for (const saved of (await this.store?.load()) ?? []) {
       const chat = saved.chat;
+      chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
+      this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
       chat.control = {
         owner: "human",
         capture: "private",
@@ -114,7 +117,9 @@ export class AgentRuntime {
   }
   list() {
     return structuredClone(
-      [...this.sessions.values()].map((item) => item.chat),
+      [...this.sessions.values()]
+        .map((item) => item.chat)
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
     );
   }
   private publish(session: Session) {
@@ -138,6 +143,10 @@ export class AgentRuntime {
       session = {
         chat: {
           id,
+          createdAt: (this.lastCreatedAt = Math.max(
+            Date.now(),
+            this.lastCreatedAt + 1,
+          )),
           name: "New agent",
           status: "idle",
           messages: [],
@@ -150,6 +159,7 @@ export class AgentRuntime {
         controller: null,
       };
       this.sessions.set(id, session);
+      this.publish(session);
     }
     return structuredClone(session.chat);
   }

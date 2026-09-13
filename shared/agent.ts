@@ -25,6 +25,7 @@ export type ToolActivity = {
 };
 export type AgentChat = {
   id: string;
+  createdAt?: number;
   name: string;
   status: "idle" | "running" | "waiting" | "completed" | "error" | "stopped";
   control?: SessionControl;

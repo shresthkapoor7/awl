@@ -167,6 +167,32 @@ try {
     publish: () => {},
   });
   await reopened.ready;
+  reopened.create("newest_a");
+  reopened.create("newest_b");
+  assert.deepEqual(
+    reopened
+      .list()
+      .slice(0, 2)
+      .map((chat) => chat.id),
+    ["newest_b", "newest_a"],
+  );
+  await reopened.flush();
+  const ordered = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: directory,
+    publish: () => {},
+  });
+  await ordered.ready;
+  assert.deepEqual(
+    ordered
+      .list()
+      .slice(0, 2)
+      .map((chat) => chat.id),
+    ["newest_b", "newest_a"],
+  );
+  ordered.close();
   assert.equal(reopened.list().find((c) => c.id === "paused").status, "idle");
   assert.equal(
     reopened.list().find((c) => c.id === "paused").mode,

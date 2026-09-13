@@ -21,7 +21,13 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { blankAgent, fromChat, phaseLabel, type Agent } from "./agents";
+import {
+  blankAgent,
+  fromChat,
+  newestFirst,
+  phaseLabel,
+  type Agent,
+} from "./agents";
 import { Capabilities } from "./components/Capabilities";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { BrowserPanel } from "./components/BrowserPanel";
@@ -85,9 +91,13 @@ export function App() {
       received.add(chat.id);
       if (!active) return;
       setAgents((current) =>
-        current.some((item) => item.id === chat.id)
-          ? current.map((item) => (item.id === chat.id ? fromChat(chat) : item))
-          : [...current, fromChat(chat)],
+        newestFirst(
+          current.some((item) => item.id === chat.id)
+            ? current.map((item) =>
+                item.id === chat.id ? fromChat(chat) : item,
+              )
+            : [fromChat(chat), ...current],
+        ),
       );
     }
     const unsubscribe = bridge.subscribe(receive);
@@ -137,8 +147,13 @@ export function App() {
         setCreateError(result.error ?? "Could not create a chat.");
         return;
       }
-      setAgents((current) => [...current, fromChat(result.chat!)]);
-    } else setAgents((current) => [...current, next]);
+      setAgents((current) =>
+        newestFirst([
+          fromChat(result.chat!),
+          ...current.filter((item) => item.id !== next.id),
+        ]),
+      );
+    } else setAgents((current) => newestFirst([next, ...current]));
     setStartupError(null);
     setSearch("");
     selectAgent(next.id);
@@ -514,7 +529,7 @@ export function App() {
             setAgents((current) =>
               current.some((item) => item.id === chat.id)
                 ? current
-                : [...current, fromChat(chat)],
+                : newestFirst([fromChat(chat), ...current]),
             );
             selectAgent(chat.id);
             setBrowserOpen(true);
