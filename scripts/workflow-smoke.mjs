@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 const directory = await mkdtemp(join(tmpdir(), "awl-workflow-ui-"));
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
@@ -79,7 +79,7 @@ const env = {
 delete env.ELECTRON_RUN_AS_NODE;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: [resolve("scripts/workspace-fixture.cjs")],
+  args: testElectronArgs([resolve("scripts/workspace-fixture.cjs")]),
   env,
 });
 try {

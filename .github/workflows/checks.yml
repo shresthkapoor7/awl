@@ -32,13 +32,21 @@ jobs:
         run: |
           node -e 'require("electron")'
           npx playwright-core install-deps chromium
+          sudo apt-get install -y openbox
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Check types and build
         run: npm run build
       - name: Unit and integration checks (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' npm run test:all
+        run: |
+          xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' bash -c '
+            openbox >/tmp/awl-window-manager.log 2>&1 &
+            awl_wm_pid=$!
+            trap "kill $awl_wm_pid 2>/dev/null || true" EXIT
+            npm run test:all
+          '
+
       - name: Unit and integration checks (macOS)
         if: runner.os == 'macOS'
         run: npm run test:all

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir, writeFile } from "node:fs/promises";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 
 let cacheRequests = 0;
 const server = createServer((req, res) => {
@@ -45,7 +45,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args: ["."],
+  args: testElectronArgs(["."]),
   env,
 });
 try {

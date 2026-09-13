@@ -1,20 +1,12 @@
 import assert from "node:assert/strict";
 import { _electron as electron } from "playwright-core";
-import { prepareElectron } from "./electron-runtime.mjs";
+import { prepareElectron, testElectronArgs } from "./electron-runtime.mjs";
 const env = { ...process.env, AWL_AI_DISABLED: "1" };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.AWL_DEV_URL;
 const app = await electron.launch({
   executablePath: await prepareElectron(),
-  args:
-    process.platform === "linux" && process.env.CI
-      ? [
-          ".",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--enable-unsafe-swiftshader",
-        ]
-      : ["."],
+  args: testElectronArgs(["."]),
   env,
 });
 try {
