@@ -1,3 +1,5 @@
+import { ChatSettings } from "./ChatSettings";
+import { TurnRail } from "./TurnRail";
 import { RunHistory } from "./RunHistory";
 import { Demonstration } from "./Demonstration";
 import { RecordingControls } from "./RecordingControls";
@@ -27,9 +29,18 @@ export function Conversation({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    field.style.height = "auto";
+    field.style.height = `${Math.min(160, Math.max(60, field.scrollHeight))}px`;
+  }, [draft]);
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
   const busy = agent.live.status === "running";
   useEffect(() => {
     if (!busy) setStopping(false);
@@ -46,6 +57,7 @@ export function Conversation({
     }
   }
   useEffect(() => {
+    if (!followLatest.current) return;
     scroll.current?.scrollTo({
       top: scroll.current.scrollHeight,
       behavior: "instant",
@@ -53,9 +65,17 @@ export function Conversation({
   }, [agent.messages.length, agent.live.tools.length]);
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!draft.trim() || busy || sending || !enabled || agent.live.pending)
+    if (
+      !draft.trim() ||
+      busy ||
+      sending ||
+      savingSettings ||
+      !enabled ||
+      agent.live.pending
+    )
       return;
     const text = draft;
+    followLatest.current = true;
     setSending(true);
     try {
       if (await onSend(text.trim()))
@@ -94,94 +114,129 @@ export function Conversation({
           )}
         </div>
       </header>
-      <div className="conversation-scroll" ref={scroll}>
-        {!agent.messages.length && (
-          <div className="welcome">
-            <div className="welcome-mark">
-              <Mark />
+      <div className="conversation-timeline">
+        <TurnRail
+          messages={agent.messages}
+          scroll={scroll}
+          onJump={() => {
+            followLatest.current = false;
+          }}
+        />
+        <div
+          className="conversation-scroll"
+          ref={scroll}
+          onScroll={() => {
+            const element = scroll.current;
+            if (element)
+              followLatest.current =
+                element.scrollHeight -
+                  element.scrollTop -
+                  element.clientHeight <
+                60;
+          }}
+        >
+          {!agent.messages.length && (
+            <div className="welcome">
+              <div className="welcome-mark">
+                <Mark />
+              </div>
+              <h2>What’s the task?</h2>
+              <p>A website and an outcome.</p>
             </div>
-            <h2>What’s the task?</h2>
-            <p>A website and an outcome.</p>
-          </div>
-        )}
-        {agent.messages.map((message) => (
-          <article
-            key={message.id}
-            className={
-              message.role === "user"
-                ? "user-message additional-message"
-                : "assistant-message additional-message"
-            }
-          >
-            <div className="message-person">
-              <strong>{message.role === "user" ? "You" : "awl"}</strong>
-              {message.role === "assistant" && (
-                <span>
-                  {agent.live.mode === "execution" ? "Capability" : model}
-                </span>
+          )}
+          {agent.messages.map((message) => (
+            <article
+              key={message.id}
+              data-turn={message.role === "user" ? message.id : undefined}
+              tabIndex={-1}
+              className={
+                message.role === "user"
+                  ? "user-message additional-message"
+                  : "assistant-message additional-message"
+              }
+            >
+              <div className="message-person">
+                <strong
+                  className={
+                    message.role === "assistant" ? "assistant-brand" : undefined
+                  }
+                >
+                  {message.role === "assistant" && <Mark />}
+                  {message.role === "user" ? "You" : "awl"}
+                </strong>
+                {message.role === "assistant" && (
+                  <span>
+                    {message.model ??
+                      (agent.live.mode === "execution" ? "Capability" : model)}
+                  </span>
+                )}
+              </div>
+              <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
+            </article>
+          ))}
+          {!!agent.live.tools.length && (
+            <details className="live-tool-activity">
+              <summary>
+                {busy ? "Working" : "Tool activity"} · {agent.live.tools.length}{" "}
+                calls
+              </summary>
+              <ol>
+                {agent.live.tools.map((tool) => (
+                  <li key={tool.id}>
+                    <span>{tool.name.replaceAll("_", " ")}</span>
+                    <span>{tool.detail ?? tool.state}</span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+          {busy && (
+            <p className="live-agent-status" role="status">
+              {agent.live.tools.at(-1)?.state === "running"
+                ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
+                : agent.live.mode === "execution"
+                  ? "Executing capability…"
+                  : "Thinking…"}
+            </p>
+          )}
+          {agent.live.execution && (
+            <p className="live-agent-status">
+              {agent.live.execution.validation ? "Validation" : "Execution"} ·{" "}
+              {Math.min(
+                agent.live.execution.step + 1,
+                agent.live.execution.total,
               )}
-            </div>
-            <MarkdownMessage text={message.text} onOpenLink={onOpenLink} />
-          </article>
-        ))}
-        {!!agent.live.tools.length && (
-          <details className="live-tool-activity">
-            <summary>
-              {busy ? "Working" : "Tool activity"} · {agent.live.tools.length}{" "}
-              calls
-            </summary>
-            <ol>
-              {agent.live.tools.map((tool) => (
-                <li key={tool.id}>
-                  <span>{tool.name.replaceAll("_", " ")}</span>
-                  <span>{tool.detail ?? tool.state}</span>
-                </li>
-              ))}
-            </ol>
-          </details>
-        )}
-        {busy && (
-          <p className="live-agent-status" role="status">
-            {agent.live.tools.at(-1)?.state === "running"
-              ? `${agent.live.tools.at(-1)!.name.replaceAll("_", " ")}…`
-              : agent.live.mode === "execution"
-                ? "Executing capability…"
-                : "Thinking…"}
-          </p>
-        )}
-        {agent.live.execution && (
-          <p className="live-agent-status">
-            {agent.live.execution.validation ? "Validation" : "Execution"} ·{" "}
-            {Math.min(
-              agent.live.execution.step + 1,
-              agent.live.execution.total,
-            )}
-            /{agent.live.execution.total} steps · {agent.live.execution.status}
-          </p>
-        )}
-        {!!agent.live.journal?.length && (
-          <RunHistory key={`history-${agent.id}`} events={agent.live.journal} />
-        )}
-        <Demonstration key={`demonstration-${agent.id}`} chat={agent.live} />
-        {agent.live.pending &&
-          !(
-            agent.live.pending.reason === "demonstration" &&
-            agent.live.demonstration &&
-            agent.live.demonstration.mode !== "off"
-          ) && (
-            <HumanRequest
-              key={agent.live.pending.id}
-              agentId={agent.id}
-              request={agent.live.pending}
-              capture={agent.live.control?.capture}
-              repair={agent.live.mode === "execution"}
+              /{agent.live.execution.total} steps ·{" "}
+              {agent.live.execution.status}
+            </p>
+          )}
+          {!!agent.live.journal?.length && (
+            <RunHistory
+              key={`history-${agent.id}`}
+              events={agent.live.journal}
             />
           )}
-        {(stopError || startupError || agent.live.error) && (
-          <p className="live-agent-error" role="alert">
-            {stopError || startupError || agent.live.error}
-          </p>
-        )}
+          <Demonstration key={`demonstration-${agent.id}`} chat={agent.live} />
+          {agent.live.pending &&
+            !(
+              agent.live.pending.reason === "demonstration" &&
+              agent.live.demonstration &&
+              agent.live.demonstration.mode !== "off"
+            ) && (
+              <HumanRequest
+                key={agent.live.pending.id}
+                agentId={agent.id}
+                request={agent.live.pending}
+                capture={agent.live.control?.capture}
+                repair={agent.live.mode === "execution"}
+              />
+            )}
+          {(stopError || startupError || agent.live.error) && (
+            <p className="live-agent-error" role="alert">
+              {stopError || startupError || agent.live.error}
+            </p>
+          )}
+        </div>
       </div>
       <div className="composer-area">
         <form className="composer" onSubmit={(event) => void submit(event)}>
@@ -189,6 +244,7 @@ export function Conversation({
             Message your agent
           </label>
           <textarea
+            ref={input}
             id="message"
             placeholder="What do you want to get done?"
             value={draft}
@@ -206,6 +262,17 @@ export function Conversation({
             }}
           />
           <div className="composer-bottom">
+            <ChatSettings
+              chat={agent.live}
+              defaultModel={model}
+              disabled={
+                !enabled ||
+                busy ||
+                sending ||
+                agent.live.demonstration?.mode === "recording"
+              }
+              onSaving={setSavingSettings}
+            />
             {busy ? (
               <button
                 className="send-button stop-agent-icon"
@@ -223,7 +290,11 @@ export function Conversation({
                 type="submit"
                 aria-label="Send message"
                 disabled={
-                  !draft.trim() || sending || !enabled || !!agent.live.pending
+                  !draft.trim() ||
+                  sending ||
+                  savingSettings ||
+                  !enabled ||
+                  !!agent.live.pending
                 }
               >
                 <ArrowUp size={18} />

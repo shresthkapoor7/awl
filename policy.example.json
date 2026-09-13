@@ -1,0 +1,15 @@
+{
+  "destinations": [
+    { "origin": "http://127.0.0.1:8080", "paths": ["/", "/work/*"] }
+  ],
+  "actions": ["navigate", "click", "fill", "select", "press", "scroll"],
+  "safeControls": [
+    {
+      "origin": "http://127.0.0.1:8080",
+      "path": "/work/inquiry",
+      "selector": "button[name=search]",
+      "actions": ["click"]
+    }
+  ],
+  "blockedControls": ["[data-action=post]", "[data-action=transfer]"]
+}

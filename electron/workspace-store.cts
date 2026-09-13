@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import type { AgentChat } from "../shared/agent.js";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import { parseStoredSession } from "./stored-session.cjs";
+import { safeStoredSession } from "./privacy.cjs";
 import { redactDemonstration } from "../shared/recording.js";
 export type StoredSession = { chat: AgentChat; history: ResponseInput };
 export class WorkspaceStore {
@@ -28,17 +29,11 @@ export class WorkspaceStore {
         const path = join(this.root, file);
         const info = await lstat(path);
         if (!info.isFile() || info.size > 16_000_000) continue;
-        const saved = parseStoredSession(
+        let saved = parseStoredSession(
           JSON.parse(await readFile(path, "utf8")),
         );
         if (!saved || saved.chat.id !== file.slice(0, -5)) continue;
-        let migrated = false;
         if (saved.chat.demonstration) {
-          migrated = saved.chat.demonstration.steps.some(
-            (step) =>
-              ["fill", "select"].includes(step.operation) &&
-              (step.value !== null || step.target?.kind === "text"),
-          );
           saved.chat.demonstration = redactDemonstration(
             saved.chat.demonstration,
           );
@@ -53,10 +48,10 @@ export class WorkspaceStore {
                 .find((at) => Number.isFinite(at) && at > 0)
             : undefined;
           saved.chat.createdAt = journalAt ?? info.mtimeMs;
-          migrated = true;
         }
-        // Freeze migrated ordering and remove legacy entries before restoration.
-        if (migrated) await this.save(saved).catch(() => {});
+        // Rewrite legacy raw observations too; browser/model state is never restored as authority.
+        saved = safeStoredSession(saved);
+        await this.save(saved);
         sessions.push(saved);
       } catch {
         /* An interrupted or corrupt file cannot authorize execution. */
@@ -67,6 +62,7 @@ export class WorkspaceStore {
   save(session: StoredSession) {
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(session.chat.id))
       return Promise.reject(new Error("Invalid session identity."));
+    session = safeStoredSession(session);
     const data = JSON.stringify({
       version: 1,
       ...session,

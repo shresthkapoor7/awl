@@ -1,3 +1,4 @@
+import { redactText, redactData } from "./privacy.cjs";
 import type { RunEvent } from "../shared/recording.js";
 
 export class Journal {
@@ -16,7 +17,7 @@ export class Journal {
       at: new Date().toISOString(),
       actor,
       kind,
-      label: label.slice(0, 1000),
+      label: redactText(label, id).slice(0, 1000),
     };
     events.push(event);
     if (events.length > 2000) events.shift();
@@ -33,8 +34,7 @@ export class Journal {
     const events = this.events.get(id) ?? [];
     const event = events.find((item) => item.sequence === sequence);
     if (!event) return;
-    if (JSON.stringify(data).length <= 64000)
-      event.data = structuredClone(data);
+    if (JSON.stringify(data).length <= 64000) event.data = redactData(data, id);
     if (image?.startsWith("data:image/png;base64,") && image.length < 2_000_000)
       event.image = image;
     let evidence = 0,

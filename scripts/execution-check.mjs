@@ -9,6 +9,27 @@ const directory = await mkdtemp(join(tmpdir(), "awl-execution-"));
 let changed = false;
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
+  if (req.url === "/nested-ready") {
+    res.end('<iframe src="/inner-ready" title="Work"></iframe>');
+    return;
+  }
+  if (req.url === "/inner-ready") {
+    res.end("<p>Nested continuation verified</p>");
+    return;
+  }
+  if (
+    req.url === "/outcome" ||
+    req.url === "/interstitial" ||
+    req.url === "/recovery-limit" ||
+    req.url === "/manual-recovery"
+  ) {
+    res.end(
+      req.url === "/outcome"
+        ? '<p id="notice">No matching member</p>'
+        : `<p id="notice">Host bulletin</p><button id="ack" onclick="${req.url === "/recovery-limit" ? "" : "document.body.innerHTML='<p id=done>Ready</p>'"}">${req.url === "/manual-recovery" ? "Approve bulletin" : "Acknowledge"}</button>`,
+    );
+    return;
+  }
   if (["/text-form", "/clear-field", "/replace-field"].includes(req.url)) {
     const clear = req.url === "/clear-field";
     const replace = req.url === "/replace-field";
@@ -51,6 +72,131 @@ const step = (operation, options = {}) => ({
 });
 try {
   await app.firstWindow();
+  const nested = await app.evaluate(async (_, base) => {
+    const t = globalThis.awlToolsTest;
+    const tab = await t.browser.start(
+      "nested-check",
+      `${base}/nested-ready`,
+      null,
+      AbortSignal.timeout(10000),
+    );
+    return t.call(
+      "browser-wait",
+      "browserWait",
+      {
+        tab_id: tab.activeTabId,
+        condition: "text",
+        contains: "Nested continuation verified",
+        timeout_ms: 5000,
+      },
+      "nested-check",
+    );
+  }, base);
+  assert.equal(nested.ok, true);
+  for (const route of [
+    "outcome",
+    "interstitial",
+    "recovery-limit",
+    "manual-recovery",
+  ]) {
+    const draft = {
+      id: "declared_states",
+      name: "Declared states",
+      description: "Handle observed states",
+      origin: base,
+      expected_version: 0,
+      inputs: [],
+      outputs: [{ name: "result", type: "string", description: "Result" }],
+      steps: [
+        step("navigate", { value: `${base}/${route}` }),
+        step("extract_text", {
+          target: target("css", "#done"),
+          output: "result",
+        }),
+        step("assert_text", { target: target("css", "#done"), value: "Ready" }),
+      ],
+      handlers: [
+        {
+          id: route === "outcome" ? "member_not_found" : "bulletin",
+          before_step: 1,
+          when: target("css", "#notice"),
+          text: route === "outcome" ? "No matching member" : "Host bulletin",
+          disposition: route === "outcome" ? "outcome" : "recover",
+          message: "Observed declared state",
+          action: route === "outcome" ? null : "click",
+          target: route === "outcome" ? null : target("css", "#ack"),
+          key: null,
+          attempts: 2,
+          wait_ms: 100,
+        },
+      ],
+      on_unknown_state: "pause_for_human",
+    };
+    const result = await app.evaluate(
+      async (_, { draft, directory, route }) => {
+        const events = [];
+        const t = globalThis.awlToolsTest;
+        const run = new t.Executor.Execution(
+          { draft, hash: "fixture", path: `${directory}/${route}` },
+          { id: draft.id, sourceChatId: route, version: 1 },
+          {},
+          false,
+          {
+            agentId: route,
+            browser: t.browser,
+            artifactDirectory: directory,
+            rename: () => {},
+            event: (kind, label, evidence) =>
+              events.push({ kind, label, evidence }),
+          },
+          () => {},
+        );
+        await run.run(AbortSignal.timeout(10000));
+        if (route === "manual-recovery") {
+          if (run.state.result?.code !== "RISKY_ACTION")
+            throw new Error("Expected a policy handoff");
+          const tab = t.browser.tabs(route, "list", null).activeTabId;
+          await t.browser
+            .target(route, tab)
+            .executeJavaScript(
+              "document.body.innerHTML='<p id=done>Ready</p>'",
+            );
+          await run.run(AbortSignal.timeout(10000), true);
+        }
+        return { ...run.state, events };
+      },
+      { draft, directory, route },
+    );
+    if (route === "outcome") {
+      assert.equal(result.status, "completed");
+      assert.equal(result.result.kind, "business_outcome");
+      assert.equal(result.result.code, "member_not_found");
+      assert.deepEqual(result.outputs, {});
+    } else if (route === "interstitial" || route === "manual-recovery") {
+      assert.equal(result.result.kind, "success");
+      assert.equal(result.outputs.result, "Ready");
+      if (route === "manual-recovery")
+        assert.equal(
+          result.events.filter(
+            (event) =>
+              event.kind === "step" && event.label.startsWith("Step 2:"),
+          ).length,
+          2,
+        );
+    } else {
+      assert.equal(result.status, "paused");
+      assert.equal(result.result.code, "RECOVERY_EXHAUSTED");
+      assert.equal(
+        result.events.find((event) => event.kind === "failure").evidence.kind,
+        "dom_structure",
+      );
+      assert.ok(
+        !JSON.stringify(
+          result.events.find((event) => event.kind === "failure").evidence,
+        ).includes("Host bulletin"),
+      );
+    }
+  }
   for (const route of ["text-form", "clear-field", "replace-field"]) {
     const field = target("css", 'textarea[name="q"]');
     const fieldDraft = {
@@ -77,7 +223,7 @@ try {
         }),
         step("assert_text", {
           target: target("css", "#result"),
-          value: "Submitted: NFL Sunday Ticket",
+          value: "Submitted: {{query}}",
         }),
       ],
       on_unknown_state: "pause_for_human",

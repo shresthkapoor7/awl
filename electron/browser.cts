@@ -11,6 +11,13 @@ import {
   type WebContents,
   type WebPreferences,
 } from "electron";
+import {
+  attachPolicy,
+  loadPolicy,
+  readOnlyPolicy,
+  BrowserPolicy,
+} from "./policy.cjs";
+import { attachPrivacy } from "./privacy.cjs";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { automationInput } from "./tools/page.cjs";
 import { randomUUID } from "node:crypto";
@@ -72,7 +79,12 @@ function normalizeURL(value: unknown): string {
   return new URL(url).href;
 }
 
-export function installBrowser(window: BrowserWindow): BrowserAccess {
+export function installBrowser(
+  window: BrowserWindow,
+  policy: BrowserPolicy = loadPolicy(),
+): BrowserAccess {
+  const access = new Map<string, BrowserPolicy>();
+  const sessionPolicy = (id: string) => access.get(id) ?? policy;
   const owners = new Map<string, "human" | "agent">();
   let humanInput: ((id: string) => void) | undefined;
   const interruptHumanInput = (id: string) => {
@@ -494,6 +506,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     browser.tabs.push(tab);
     browser.active = tab.id;
     const wc = view.webContents;
+    attachPolicy(wc, sessionPolicy(browser.id));
+    attachPrivacy(wc, browser.id);
     wc.on("before-input-event", (event, input) => {
       if (
         input.key === "Escape" &&
@@ -529,6 +543,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     });
     wc.setWindowOpenHandler((details) => {
       if (
+        (owners.get(browser.id) === "agent" &&
+          !policy.destination(details.url)) ||
         (!webURL(details.url) && details.url !== "about:blank") ||
         browser.tabs.length >= 12
       ) {
@@ -557,9 +573,9 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       event: Electron.Event & { url: string; isMainFrame: boolean },
     ) => {
       if (
-        event.isMainFrame &&
-        !webURL(event.url) &&
-        event.url !== "about:blank"
+        (owners.get(browser.id) === "agent" &&
+          !policy.destination(event.url)) ||
+        (event.isMainFrame && !webURL(event.url) && event.url !== "about:blank")
       ) {
         event.preventDefault();
         browser.notice =
@@ -627,6 +643,17 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       callback(false),
     );
     isolated.setPermissionCheckHandler(() => false);
+    // Block frame requests before network effects, including form posts and redirects.
+    isolated.webRequest.onBeforeRequest((details, callback) => {
+      const frameRequest = ["mainFrame", "subFrame"].includes(
+        details.resourceType,
+      );
+      const blocked =
+        owners.get(id) === "agent" &&
+        frameRequest &&
+        !policy.destination(details.url);
+      callback({ cancel: blocked });
+    });
     const browser: AgentBrowser = {
       id,
       session: isolated,
@@ -813,6 +840,20 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
     onHumanInput: (handler) => {
       humanInput = handler;
     },
+    updatePolicy: (config) => {
+      policy = new BrowserPolicy(config);
+      for (const id of access.keys()) access.set(id, readOnlyPolicy(policy));
+      for (const browser of browsers.values())
+        for (const tab of browser.tabs)
+          attachPolicy(tab.view.webContents, sessionPolicy(browser.id));
+    },
+    setAccess: (id, value) => {
+      if (deleted.has(id)) return;
+      if (value === "read_only") access.set(id, readOnlyPolicy(policy));
+      else access.delete(id);
+      for (const tab of browsers.get(id)?.tabs ?? [])
+        attachPolicy(tab.view.webContents, sessionPolicy(id));
+    },
     setOwner: (id, owner) => {
       if (!deleted.has(id)) owners.set(id, owner);
     },
@@ -820,6 +861,7 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
       const browser = browsers.get(id);
       deleted.add(id);
       owners.delete(id);
+      access.delete(id);
       if (!browser) return;
       if (presentation?.agentId === id) {
         presentation = null;
@@ -860,6 +902,8 @@ export function installBrowser(window: BrowserWindow): BrowserAccess {
         );
       }
       signal.throwIfAborted();
+      sessionPolicy(agentId).assertType("navigate");
+      sessionPolicy(agentId).assertDestination(url);
       const browser = getBrowser(agentId);
       const tab = tabId
         ? target(agentId, tabId)

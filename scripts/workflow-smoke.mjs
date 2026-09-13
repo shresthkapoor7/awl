@@ -71,7 +71,25 @@ await writeFile(
   join(directory, "capabilities/fixture/search/v1.json"),
   JSON.stringify(contract),
 );
+const policyFile = join(directory, "policy.json");
+await writeFile(
+  policyFile,
+  JSON.stringify({
+    destinations: [{ origin: base, paths: ["/*"] }],
+    actions: ["navigate", "click", "fill", "select", "press", "scroll"],
+    safeControls: [
+      {
+        origin: base,
+        path: "/*",
+        selector: "button",
+        actions: ["click", "press"],
+      },
+    ],
+    blockedControls: [],
+  }),
+);
 const env = {
+  AWL_POLICY_FILE: policyFile,
   ...process.env,
   AWL_AI_DISABLED: "1",
   AWL_TEST_USER_DATA: directory,
@@ -135,6 +153,30 @@ try {
     );
     await wc.debugger.sendCommand("Input.insertText", { text: "taught query" });
   }, base);
+  // Recording controls must remain inside the chat even on a wide window
+  // whose two side panels leave a narrow conversation column.
+  for (const width of [1260, 1100, 1480]) {
+    await app.evaluate(
+      ({ BrowserWindow }, width) =>
+        BrowserWindow.getAllWindows()[0].setSize(width, 960),
+      width,
+    );
+    await page.waitForFunction(() => {
+      const bounds = document
+        .querySelector(".conversation")
+        .getBoundingClientRect();
+      return [
+        ...document.querySelectorAll(".conversation-actions button"),
+      ].every((button) => {
+        const rect = button.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.left >= bounds.left &&
+          rect.right <= bounds.right
+        );
+      });
+    });
+  }
   await page.getByRole("button", { name: "Stop & build", exact: true }).click();
   await page.getByText(/Recording saved. Add OPENAI_API_KEY/).waitFor();
   await page.getByText(/recorded steps/).click();
@@ -147,7 +189,7 @@ try {
   assert(
     await page.getByRole("button", { name: "Build capability" }).isVisible(),
   );
-  assert.equal(await page.getByText(/Run history ·/).count(), 1);
+  assert.equal(await page.locator(".run-history > summary").count(), 1);
   await mkdir("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/workflow-review.png" });
   const deletedId = await page.evaluate(() =>
@@ -218,7 +260,10 @@ try {
   ).chats.length;
   await numeric.fill("12");
   await numeric.fill("");
-  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .locator(".capability-entry")
+    .getByRole("button", { name: /^Validate/ })
+    .click();
   await page
     .getByRole("alert")
     .filter({ hasText: "Enter a number for query." })
@@ -228,7 +273,10 @@ try {
     sessionsBeforeBlank,
   );
   await numeric.fill("0");
-  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .locator(".capability-entry")
+    .getByRole("button", { name: /^Validate/ })
+    .click();
   await page
     .getByText("results: Results: 0", { exact: false })
     .waitFor({ timeout: 20000 });

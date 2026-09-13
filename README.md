@@ -1,4 +1,4 @@
-# awl
+<h1><img src="public/awl.svg" width="40" height="40" alt="" align="absmiddle" /> awl</h1>
 
 Computer use that learns a workflow, turns it into a capability, and asks for help when it needs you.
 
@@ -13,7 +13,9 @@ npm ci
 npm run dev
 ```
 
-Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The key stays in the main process. Validating and running saved capabilities does not require an API key.
+Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The composer lets you select a model per chat; other model IDs must support images, reasoning, and tools and be available to your API key. The key stays in the main process. Validating and running saved capabilities does not require an API key.
+
+The composer also offers **Configured access** and **Read only** browser modes. Read only allows inspection, navigation, and scrolling within the configured policy; automated clicks, typing, selections, and key presses are blocked. Manual browsing remains under your control. Settings persist per chat and can be changed while the agent is stopped.
 
 Renderer edits reload during development. Restart `npm run dev` after changing Electron or preload code. `npm start` builds and launches the app; `npm run dev:web` previews only the renderer. On macOS, the launcher prepares a cached awl.app with its own menu-bar and Dock identity.
 
@@ -64,3 +66,23 @@ npm run test:all
 GitHub Actions runs the build and fixture tests on Linux and macOS for pull requests and feature-branch pushes. No API key is needed. Tests cover browser isolation, targeting, private capture, handoff/cancellation, recording, two-input validation, zero-model execution, explicit repair, context/restart handling, workspace UI, and office behavior. Linux tests run under Xvfb. Failure screenshots are uploaded as CI artifacts.
 
 `npm run test:tools` and `npm run test:ui` run smaller suites. The optional `AWL_LIVE_TEST=1 node scripts/agent-live-check.mjs` uses the configured key and incurs API usage; build first.
+
+### Browser policy
+
+Open the composer’s access dropdown → **Manage access** to add allowed websites and paths, choose action types, and edit approved controls, blocked controls, and private-field selectors. **Save access** applies the policy to all chats and open tabs; stop active agents and recordings first. Read only chats retain their narrower restrictions. Rules are saved locally and loaded when awl restarts.
+
+For an existing JSON policy, set `AWL_POLICY_FILE` in `.env` (see `policy.example.json`) and restart awl. The editor then reads and saves that file. It detects intervening file changes and asks you to reload instead of overwriting them. Without saved rules, automation has no permitted websites. Human browsing remains available. Origins are exact; paths are exact or end in `/*` for a subtree. Include legitimate authentication destinations and frame routes explicitly. Policy checks apply to discovery, validation, execution, and repair; the model cannot edit the policy.
+
+Declare allowed action types and narrowly scoped `safeControls` for activating buttons or Enter submissions. Ordinary links must remain within allowed destinations. `blockedControls` and recognized consequential controls (posting, transfers, payments, deletion, authorization) require direct human operation even when a broad safe-control rule would match. Take over for the particular action, verify its result, then resume. The text classifier is conservative and incomplete: explicitly block application-specific risky controls. Do not allow an entire form or all buttons without reviewing their effects. The browser still runs the application's JavaScript; control policy is not a sandbox for arbitrary side effects inside a permitted application.
+
+### Data retention
+
+Authentication remains private. Identified personal fields (including common name/contact table columns and configured `sensitiveSelectors` in the browser policy) are redacted from DOM observations and saved text. Capability writes reject known private literals; use parameters and structural targets. Screenshot capture is refused when identified personal fields are visible. Detection is heuristic: configure selectors for the target application's PII and do not use real banking data to evaluate the prototype.
+
+Raw tool history, opaque model compaction/reasoning, screenshots, and execution input/output values stay in memory and are omitted from workspace files. Restart rebuilds model context from redacted chat messages, not the original SDK history. Live outputs remain available to the caller during the run. Names and other unstructured personal data without recognizable metadata may evade detection; redacted text is not an assurance that arbitrary documents are safe to publish. Review any exported evidence before sharing it.
+
+### Outcomes and intervention evidence
+
+Version 3 capabilities can declare exceptional states scoped to a step: a named business outcome, a hard failure, or a bounded recovery that acknowledges a known control or waits before re-observing. Recovery never repeats the previous action automatically. Unknown states pause with a structured result containing the step, expectation, observation, and uncertainty. `{{input_name}}` bindings work in target values/scopes and text assertions; CSS values are escaped, and undeclared bindings are rejected. Earlier artifact versions remain readable.
+
+Failure history includes a bounded DOM-structure snapshot with frame/control states, excluding text, values, URLs, and screenshots. This deliberately trades visual detail for safe persisted debugging evidence. Human resume records a redacted explanation (or a private-authentication completion event), and text checkpoints must match exactly one frame. After a human completes a blocked or uncertain action, the executor verifies the next observable target/checkpoint before advancing. It does not treat the confirmation alone as evidence that the whole workflow succeeded.

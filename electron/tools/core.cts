@@ -5,6 +5,10 @@ import type { PendingQuestion } from "../../shared/agent.js";
 import type { BrowserState } from "../../shared/browser.js";
 
 export interface BrowserAccess {
+  updatePolicy?: (
+    config: import("../../shared/policy.js").PolicyConfig,
+  ) => void;
+  setAccess?: (id: string, access: "configured" | "read_only") => void;
   start(
     agentId: string,
     url: string,
@@ -30,6 +34,11 @@ export type ToolContext = {
   ask?: (request: Omit<PendingQuestion, "id">) => { request_id: string };
   complete?: (summary: string) => void;
   evidence?: (sequence: number) => unknown;
+  event?: (
+    kind: string,
+    label: string,
+    evidence?: import("../../shared/evidence.js").SafeEvidence,
+  ) => void;
 };
 export type ToolOutput = { data: unknown; image?: string };
 export const toolSignal = new AsyncLocalStorage<AbortSignal>();

@@ -11,7 +11,12 @@ import OpenAI from "openai";
 import { readCapabilityCatalog } from "./capability-catalog.cjs";
 import { AgentRuntime, TERRA_MODEL } from "./agent-runtime.cjs";
 import type { BrowserAccess } from "./tools/core.cjs";
-export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
+import type { PolicyStore } from "./policy-store.cjs";
+export function installAgent(
+  window: BrowserWindow,
+  browser: BrowserAccess,
+  policies?: PolicyStore,
+) {
   const enabled = process.env.AWL_AI_DISABLED !== "1";
   let local: Record<string, string | undefined> = {};
   if (enabled) {
@@ -46,10 +51,61 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
     )
       throw new Error("Agent access is restricted to the awl workspace.");
   }
+  ipcMain.handle("agent:policy", async (event) => {
+    authorize(event);
+    await runtime.ready;
+    if (!policies)
+      return { error: "Access management is unavailable in this workspace." };
+    try {
+      return { state: policies.read() };
+    } catch {
+      return {
+        error:
+          "Could not read the browser policy file. Check that it contains valid access rules.",
+      };
+    }
+  });
+  ipcMain.handle("agent:save-policy", async (event, input) => {
+    authorize(event);
+    await runtime.ready;
+    if (!policies || !browser.updatePolicy)
+      return { error: "Access management is unavailable in this workspace." };
+    if (runtime.policyBusy())
+      return {
+        error:
+          "Stop active agents and recordings before changing workspace access.",
+      };
+    if (
+      !input ||
+      typeof input.revision !== "string" ||
+      !/^[a-f0-9]{64}$/.test(input.revision)
+    )
+      return { error: "Reload the access editor before saving." };
+    try {
+      const state = policies.save(input.config, input.revision);
+      browser.updatePolicy(state.config);
+      return { state };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error &&
+          error.message.startsWith("Access rules changed")
+            ? error.message
+            : "Could not save access rules. Check the fields and that the policy file is writable.",
+      };
+    }
+  });
   ipcMain.handle("agent:state", async (event) => {
     authorize(event);
     await runtime.ready;
     return { enabled, model, chats: runtime.list() };
+  });
+  ipcMain.handle("agent:configure", async (event, input) => {
+    authorize(event);
+    await runtime.ready;
+    if (!input || typeof input.id !== "string")
+      return { error: "Invalid chat." };
+    return runtime.configure(input.id, input.settings);
   });
   ipcMain.handle("agent:create", async (event, id) => {
     authorize(event);
@@ -192,7 +248,10 @@ export function installAgent(window: BrowserWindow, browser: BrowserAccess) {
       .catch(() => {});
     for (const name of [
       "agent:state",
+      "agent:policy",
+      "agent:save-policy",
       "agent:create",
+      "agent:configure",
       "agent:delete-session",
       "agent:delete-capability",
       "agent:capabilities",

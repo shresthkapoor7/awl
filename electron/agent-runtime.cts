@@ -1,3 +1,8 @@
+import { sessionSettingsSchema } from "../shared/session-settings.js";
+import { redactText, forgetPrivate } from "./privacy.cjs";
+import { captureFailure } from "./evidence.cjs";
+import { browserWait } from "./tools/browser-wait.cjs";
+import { toolSignal as observationScope, abortable } from "./tools/core.cjs";
 import { WorkspaceStore } from "./workspace-store.cjs";
 import {
   budgetContext,
@@ -83,6 +88,11 @@ export class AgentRuntime {
     for (const saved of (await this.store?.load()) ?? []) {
       try {
         const chat = saved.chat;
+        chat.settings ??= {
+          model: this.options.model ?? TERRA_MODEL,
+          access: "configured",
+        };
+        this.options.browser.setAccess?.(chat.id, chat.settings.access);
         chat.createdAt ??= Date.parse(chat.journal?.[0]?.at ?? "") || 0;
         this.lastCreatedAt = Math.max(this.lastCreatedAt, chat.createdAt);
         chat.control = {
@@ -179,6 +189,10 @@ export class AgentRuntime {
             this.lastCreatedAt + 1,
           )),
           name: "New agent",
+          settings: {
+            model: this.options.model ?? TERRA_MODEL,
+            access: "configured",
+          },
           status: "idle",
           messages: [],
           tools: [],
@@ -193,6 +207,63 @@ export class AgentRuntime {
       this.publish(session);
     }
     return structuredClone(session.chat);
+  }
+  policyBusy() {
+    return (
+      this.recordingRequests.size > 0 ||
+      this.repairing.size > 0 ||
+      this.launchingCapabilities.size > 0 ||
+      [...this.sessions.values()].some(
+        (session) =>
+          session.controller ||
+          session.chat.demonstration?.mode === "recording",
+      )
+    );
+  }
+  configure(id: string, raw: unknown): { error?: string } {
+    const session = this.sessions.get(id);
+    if (!session || this.deleting.has(id) || this.deleted.has(id))
+      return { error: "Session not found." };
+    if (
+      session.controller ||
+      this.recordingRequests.has(id) ||
+      this.repairing.has(id) ||
+      session.chat.demonstration?.mode === "recording"
+    )
+      return {
+        error: "Stop the current run or recording before changing settings.",
+      };
+    const parsed = sessionSettingsSchema.safeParse(raw);
+    if (!parsed.success)
+      return { error: "Choose a valid model ID and access mode." };
+    if (parsed.data.access === "read_only" && !this.options.browser.setAccess)
+      return { error: "This browser does not support access controls." };
+    const previousModel =
+      session.chat.settings?.model ?? this.options.model ?? TERRA_MODEL;
+    this.options.browser.setAccess?.(id, parsed.data.access);
+    if (parsed.data.model !== previousModel) {
+      // Opaque reasoning/compaction items belong to the model that produced them.
+      // Rebuild a portable transcript; require fresh browser observations.
+      session.history = session.chat.messages.map((message) => ({
+        role: message.role,
+        content: message.text,
+      }));
+      session.history.push({
+        role: "developer",
+        content:
+          "The model changed. The transcript is retained, but previous tool state is unavailable. Inspect the current browser before acting. Do not repeat completed writes.",
+      });
+      session.chat.contextTokens = undefined;
+    }
+    session.chat.settings = parsed.data;
+    this.journal.add(
+      id,
+      "human",
+      "settings",
+      `Model: ${parsed.data.model} · Access: ${parsed.data.access === "read_only" ? "Read only" : "Configured access"}`,
+    );
+    this.publish(session);
+    return {};
   }
   send(id: string, text: string): { error?: string } {
     if ([...this.deletingCapabilities].some((key) => JSON.parse(key)[0] === id))
@@ -306,6 +377,11 @@ export class AgentRuntime {
     if (!this.options.client && !this.executions.has(id))
       return { error: "Add OPENAI_API_KEY to .env and restart awl." };
     const pending = session.chat.pending;
+    if (pending.reason !== "authentication" && !answer.trim())
+      return {
+        error:
+          "Briefly describe what changed, or choose the applicable confirmation, before resuming.",
+      };
     const controller = (session.controller = new AbortController());
     try {
       const state = this.options.browser.tabs(id, "list", null);
@@ -326,13 +402,22 @@ export class AgentRuntime {
           },
         );
         observation = result.data;
-        if (
-          pending.expected_text &&
-          !(result.data as { text: string }).text.includes(
-            pending.expected_text,
-          )
-        )
-          throw new Error("The expected page condition is not visible yet.");
+        if (pending.expected_text)
+          await browserWait.execute(
+            {
+              tab_id: tab.id,
+              condition: "text",
+              contains: pending.expected_text,
+              timeout_ms: 1000,
+            },
+            {
+              agentId: id,
+              browser: this.options.browser,
+              artifactDirectory: this.options.directory,
+              signal: controller.signal,
+              rename: () => {},
+            },
+          );
       } else if (pending.expected_text || pending.reason === "authentication")
         throw new Error("Open the expected page before resuming.");
       controller.signal.throwIfAborted();
@@ -340,8 +425,19 @@ export class AgentRuntime {
         throw new Error("The request changed.");
       const execution = this.executions.get(id);
       if (execution) {
-        if (execution.state.uncertain && answer !== "Step completed")
+        if (
+          (execution.state.uncertain ||
+            (execution.state.result?.kind === "failure" &&
+              execution.state.result.code === "RISKY_ACTION")) &&
+          answer !== "Step completed"
+        )
           throw new Error("Confirm the uncertain action first.");
+        this.journal.add(
+          id,
+          "human",
+          "resume",
+          `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
+        );
         session.chat.pending = null;
         session.chat.status = "running";
         session.chat.control = {
@@ -353,6 +449,12 @@ export class AgentRuntime {
         void this.runExecution(session, execution, answer === "Step completed");
         return {};
       }
+      this.journal.add(
+        id,
+        "human",
+        "resume",
+        `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
+      );
       session.chat.pending = null;
       session.controller = null;
       session.history.push({
@@ -430,6 +532,7 @@ export class AgentRuntime {
       if (this.deleted.has(id)) return {};
       return { error: "Could not delete this session. Try again." };
     } finally {
+      if (this.deleted.has(id)) forgetPrivate(id);
       this.deleting.delete(id);
       if (this.sessions.has(id)) this.publish(session);
     }
@@ -474,6 +577,10 @@ export class AgentRuntime {
             browser: this.options.browser,
             artifactDirectory: this.options.directory,
             rename: () => {},
+            event: (kind, label, evidence) => {
+              const event = this.journal.add(id, "runtime", kind, label);
+              if (evidence) event.evidence = evidence;
+            },
           },
           () => {
             session.chat.execution = structuredClone(execution.state);
@@ -579,11 +686,15 @@ export class AgentRuntime {
         session.chat.messages.push({
           id: randomUUID(),
           role: "assistant",
-          text: `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
-            execution.state.outputs,
-          )
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("\n")}`,
+          model: "Capability",
+          text:
+            execution.state.result?.kind === "business_outcome"
+              ? `${execution.state.result.code}: ${execution.state.result.message}`
+              : `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
+                  execution.state.outputs,
+                )
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join("\n")}`,
         });
         this.executions.delete(session.chat.id);
       } else
@@ -594,13 +705,27 @@ export class AgentRuntime {
               ? "authentication"
               : "unexpected_state",
           question: `Step ${execution.state.step + 1} paused. ${execution.state.error}${execution.state.uncertain ? " An action may have happened. Confirm it completed before advancing; otherwise use Repair." : " Check the page, then Resume to retry this step or enter Repair."}`,
-          choices: execution.state.uncertain ? ["Step completed"] : [],
+          choices:
+            execution.state.uncertain ||
+            (execution.state.result?.kind === "failure" &&
+              execution.state.result.code === "RISKY_ACTION")
+              ? ["Step completed"]
+              : [],
           expected_text: null,
         });
     } catch {
-      session.chat.status = "error";
-      session.chat.error =
-        "Execution could not finish. Check the page before continuing.";
+      this.question(session, {
+        reason: "unexpected_state",
+        question:
+          "The continuation checkpoint is not visible. Check the page or enter Repair.",
+        choices:
+          execution.state.uncertain ||
+          (execution.state.result?.kind === "failure" &&
+            execution.state.result.code === "RISKY_ACTION")
+            ? ["Step completed"]
+            : [],
+        expected_text: null,
+      });
     } finally {
       session.controller = null;
       if (session.chat.control) session.chat.control.owner = "human";
@@ -821,6 +946,13 @@ export class AgentRuntime {
     for (const session of this.sessions.values()) session.controller?.abort();
   }
   private async run(session: Session) {
+    const model =
+      session.chat.settings?.model ?? this.options.model ?? TERRA_MODEL;
+    const runInstructions =
+      instructions +
+      (session.chat.settings?.access === "read_only"
+        ? "\nThis chat is in read-only browser mode. You may inspect, navigate within the configured destinations, and scroll. Click, fill, select, and key actions are disabled. Explain when a task needs those actions; only the human can change access."
+        : "");
     const controller = session.controller!;
     const signal = AbortSignal.any([
       controller.signal,
@@ -835,8 +967,8 @@ export class AgentRuntime {
         const context = await budgetContext(
           this.options.client!.responses,
           session.history,
-          this.options.model ?? TERRA_MODEL,
-          instructions,
+          model,
+          runInstructions,
           tools.map(toolDefinition),
           signal,
         );
@@ -852,8 +984,8 @@ export class AgentRuntime {
           );
         const response = await this.options.client!.responses.create(
           {
-            model: this.options.model ?? TERRA_MODEL,
-            instructions,
+            model,
+            instructions: runInstructions,
             input: session.history,
             tools: tools.map(toolDefinition),
             parallel_tool_calls: false,
@@ -880,6 +1012,7 @@ export class AgentRuntime {
           session.chat.messages.push({
             id: randomUUID(),
             role: "assistant",
+            model,
             text: response.output_text,
           });
           this.publish(session);
@@ -920,6 +1053,7 @@ export class AgentRuntime {
                   session.chat.messages.push({
                     id: randomUUID(),
                     role: "assistant",
+                    model,
                     text: summary,
                   });
                 },
@@ -935,12 +1069,45 @@ export class AgentRuntime {
                   message: "Use one of the advertised tools.",
                 },
               };
+          let intent = "";
+          try {
+            const args = JSON.parse(call.arguments);
+            if (typeof args.intent === "string")
+              intent = `; ${args.intent.slice(0, 300)}`;
+          } catch {
+            /* Invalid arguments already have a structured tool error. */
+          }
           const evidence = this.journal.add(
             session.chat.id,
             "agent",
             "tool",
-            `${call.name}: ${result.ok ? "returned" : result.error.code}`,
+            `${call.name}: ${result.ok ? "returned" : result.error.code}${intent}`,
           );
+          if (!result.ok) {
+            try {
+              const state = this.options.browser.tabs(
+                session.chat.id,
+                "list",
+                null,
+              );
+              if (state.activeTabId) {
+                const deadline = AbortSignal.timeout(3000);
+                evidence.evidence = await observationScope.run(deadline, () =>
+                  abortable(
+                    captureFailure(
+                      this.options.browser.target(
+                        session.chat.id,
+                        state.activeTabId!,
+                      ),
+                    ),
+                    deadline,
+                  ),
+                );
+              }
+            } catch {
+              /* The error event remains useful when the page is gone. */
+            }
+          }
           if (result.ok && call.name !== "evidence_read")
             this.journal.attach(
               session.chat.id,
@@ -994,16 +1161,24 @@ export class AgentRuntime {
             });
           if (session.chat.pending || session.chat.status === "completed")
             return;
-          if (!result.ok && result.error.code === "SENSITIVE_PAGE") {
+          if (
+            !result.ok &&
+            ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION", "PRIVACY_LIMIT"].includes(
+              result.error.code,
+            )
+          ) {
             session.chat.messages.push({
               id: randomUUID(),
               role: "assistant",
-              text: "Complete authentication or payment details directly in the browser, then select Resume to continue.",
+              model,
+              text: result.error.message,
             });
             this.question(session, {
-              reason: "authentication",
-              question:
-                "Complete authentication or payment details directly in the browser, then Resume.",
+              reason:
+                result.error.code === "SENSITIVE_PAGE"
+                  ? "authentication"
+                  : "unexpected_state",
+              question: result.error.message,
               choices: [],
               expected_text: null,
             });

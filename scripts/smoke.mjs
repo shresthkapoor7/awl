@@ -48,6 +48,55 @@ try {
   );
   const draft = page.getByRole("textbox", { name: "Message your agent" });
   await draft.fill("Keep my draft");
+  // Workspace policy can be edited without losing the current chat draft.
+  const originalPolicy = (await page.evaluate(() => window.awlAgent.policy()))
+    .state;
+  assert.ok(originalPolicy);
+  await page
+    .locator('.composer-menu > summary[aria-label^="Browser access:"]')
+    .click();
+  await page
+    .getByRole("button", { name: "Manage access…", exact: true })
+    .click();
+  const editor = page.getByRole("dialog", {
+    name: "Manage access",
+    exact: true,
+  });
+  await editor
+    .getByRole("button", { name: "Add website", exact: true })
+    .waitFor();
+  await editor
+    .getByRole("button", { name: "Add website", exact: true })
+    .click();
+  const websiteNumber = originalPolicy.config.destinations.length + 1;
+  await editor
+    .getByRole("textbox", { name: `Website ${websiteNumber}`, exact: true })
+    .fill("https://policy.example.test/path");
+  await editor
+    .getByRole("button", { name: "Save access", exact: true })
+    .click();
+  await editor.getByRole("alert").waitFor();
+  await editor
+    .getByRole("textbox", { name: `Website ${websiteNumber}`, exact: true })
+    .fill("https://policy.example.test");
+  await editor
+    .getByRole("button", { name: "Save access", exact: true })
+    .click();
+  await editor.waitFor({ state: "detached" });
+  assert.equal(await draft.inputValue(), "Keep my draft");
+  const editedPolicy = (await page.evaluate(() => window.awlAgent.policy()))
+    .state;
+  assert.ok(
+    editedPolicy.config.destinations.some(
+      (site) => site.origin === "https://policy.example.test",
+    ),
+  );
+  // Restore the fixture's baseline policy for the remaining browser scenarios.
+  const restoredPolicy = await page.evaluate(
+    ({ config, revision }) => window.awlAgent.savePolicy(config, revision),
+    { config: originalPolicy.config, revision: editedPolicy.revision },
+  );
+  assert.ok(restoredPolicy.state);
   const sidebar = page.locator(".sidebar");
   const dock = page.locator(".browser-dock");
   const leftDivider = page.getByRole("separator", {

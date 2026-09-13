@@ -4,7 +4,7 @@ import { defineTool, tabIdSchema, ToolError } from "./core.cjs";
 import { inPage, observable } from "./page.cjs";
 export const browserWait = defineTool(
   "browser_wait",
-  "Wait up to 10 seconds for visible text or a URL substring in a tab’s main frame. Use after asynchronous page actions. Returns when the condition matches; a timeout does not imply an action failed. Do not retry a consequential action just because a wait timed out.",
+  "Wait up to 10 seconds for visible text or a URL substring across the tab’s frames (text must match exactly one frame), or a URL substring in its main frame. Use after asynchronous page actions. Returns when the condition matches; a timeout does not imply an action failed. Do not retry a consequential action just because a wait timed out.",
   z.strictObject({
     tab_id: tabIdSchema,
     condition: z.enum(["text", "url"]),
@@ -17,17 +17,27 @@ export const browserWait = defineTool(
     do {
       context.signal.throwIfAborted();
       const list = await observable(wc);
-      const matched = await inPage(
-        wc,
-        list[0].id,
-        ({ condition, contains }) =>
-          (condition === "url"
-            ? location.href
-            : document.body?.innerText || ""
-          ).includes(contains),
-        { condition, contains },
-      );
-      if (matched) return { data: { matched: true, tab_id } };
+      const matches: string[] = [];
+      for (const frame of condition === "url" ? list.slice(0, 1) : list) {
+        const matched = await inPage(
+          wc,
+          frame.id,
+          ({ condition, contains }) =>
+            (condition === "url"
+              ? location.href
+              : document.body?.innerText || ""
+            ).includes(contains),
+          { condition, contains },
+        );
+        if (matched) matches.push(frame.id);
+      }
+      if (matches.length > 1)
+        throw new ToolError(
+          "AMBIGUOUS_CONDITION",
+          "The checkpoint matches multiple frames. Use a more specific expected condition.",
+        );
+      if (matches.length === 1)
+        return { data: { matched: true, tab_id, frame_id: matches[0] } };
       await setTimeout(
         Math.min(200, Math.max(1, deadline - Date.now())),
         undefined,

@@ -1,5 +1,9 @@
 const { app, BrowserWindow, Menu } = require("electron");
 const path = require("node:path");
+const { readFileSync } = require("node:fs");
+const { parseEnv } = require("node:util");
+const { BrowserPolicy } = require("../dist-electron/electron/policy.cjs");
+const { PolicyStore } = require("../dist-electron/electron/policy-store.cjs");
 const { installBrowser } = require("../dist-electron/electron/browser.cjs");
 const { installAgent } = require("../dist-electron/electron/agent-ipc.cjs");
 
@@ -30,8 +34,24 @@ function createWindow() {
     },
   });
   installWorkspaceShortcuts(window, window.webContents);
-  const browser = installBrowser(window);
-  installAgent(window, browser);
+  let local = {};
+  try {
+    local = parseEnv(readFileSync(path.join(app.getAppPath(), ".env"), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const policyFile = process.env.AWL_POLICY_FILE || local.AWL_POLICY_FILE;
+  const policies = new PolicyStore(
+    policyFile
+      ? path.resolve(app.getAppPath(), policyFile)
+      : path.join(app.getPath("userData"), "policy.json"),
+    Boolean(policyFile),
+  );
+  const browser = installBrowser(
+    window,
+    new BrowserPolicy(policies.read().config),
+  );
+  installAgent(window, browser, policies);
   const developmentUrl = process.env.AWL_DEV_URL;
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());

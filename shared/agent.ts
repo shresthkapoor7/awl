@@ -1,3 +1,4 @@
+import type { SessionSettings } from "./session-settings.js";
 import type { Demonstration, RunEvent } from "./recording.js";
 export type PendingQuestion = {
   id: string;
@@ -13,6 +14,7 @@ export type SessionControl = {
   generation: number;
 };
 export type AgentMessage = {
+  model?: string;
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -24,6 +26,7 @@ export type ToolActivity = {
   detail?: string;
 };
 export type AgentChat = {
+  settings?: SessionSettings;
   id: string;
   createdAt?: number;
   name: string;
@@ -45,6 +48,7 @@ export type CapabilityRef = {
   version: number;
 };
 export type ExecutionState = CapabilityRef & {
+  result?: import("./execution.js").ExecutionResult | null;
   step: number;
   total: number;
   status: "running" | "paused" | "completed";
@@ -65,6 +69,15 @@ export type SavedCapability = {
   contract: string;
 };
 export type AgentBridge = {
+  policy: () => Promise<import("./policy.js").PolicyResult>;
+  savePolicy: (
+    config: import("./policy.js").PolicyConfig,
+    revision: string,
+  ) => Promise<import("./policy.js").PolicyResult>;
+  configure: (
+    id: string,
+    settings: SessionSettings,
+  ) => Promise<{ error?: string }>;
   deleteSession: (id: string) => Promise<{ error?: string }>;
   deleteCapability: (ref: CapabilityRef) => Promise<{ error?: string }>;
   create: (id: string) => Promise<{ chat?: AgentChat; error?: string }>;

@@ -8,6 +8,13 @@ import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
 const server = createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
+  if (req.url === "/choices") {
+    res.end(
+      '<label>Primary account<input type="radio" name="account" value="customer-private-19321"></label><label>Secondary account<input type="radio" name="account" value="customer-private-83712"></label>',
+    );
+    return;
+  }
+
   res.end(
     req.url === "/private"
       ? '<input name="otp" value="never-retain-this">'
@@ -439,6 +446,52 @@ try {
   await app.evaluate(() => globalThis.builder.close());
   console.log(
     "Recording: live event delivery, navigation, large feeds, private capture, final flush and automatic Stop-to-draft passed.",
+  );
+  const choiceRecording = await app.evaluate(async (_, base) => {
+    const t = globalThis.awlToolsTest;
+    const opened = await t.browser.start(
+      "record-choices",
+      `${base}/choices`,
+      null,
+      AbortSignal.timeout(10000),
+    );
+    const wc = t.browser.target("record-choices", opened.activeTabId);
+    const recorder = new t.Recorder(t.browser, "record-choices", () => {});
+    await recorder.start();
+    const point = await wc.executeJavaScript(
+      `(() => { const r = document.querySelector('input').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`,
+    );
+    await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      button: "left",
+      clickCount: 1,
+      ...point,
+    });
+    await wc.debugger.sendCommand("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      button: "left",
+      clickCount: 1,
+      ...point,
+    });
+    await recorder.stop();
+    return {
+      recording: recorder.state,
+      checked: await wc.executeJavaScript(
+        "document.querySelector('input').checked",
+      ),
+    };
+  }, base);
+  assert.equal(choiceRecording.checked, true);
+  const recordedChoice = choiceRecording.recording.steps.find(
+    (step) => step.operation === "click",
+  );
+  assert.ok(recordedChoice, "native radio selection is recorded");
+  assert.equal(recordedChoice.target.kind, "role");
+  assert.equal(recordedChoice.target.role, "radio");
+  assert.equal(recordedChoice.target.value, "Primary account");
+  assert.ok(
+    !JSON.stringify(choiceRecording.recording).includes("customer-private-"),
+    "recorded targets never include raw radio values",
   );
 } finally {
   await app.close();

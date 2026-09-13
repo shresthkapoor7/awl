@@ -1,3 +1,5 @@
+import { rememberPrivate, privatePageValues, privacySession } from "../privacy.cjs";
+import { policyFor } from "../policy.cjs";
 import type { WebContents } from "electron";
 import { ToolError, toolSignal } from "./core.cjs";
 export const automationInput = new WeakSet<WebContents>();
@@ -75,12 +77,22 @@ export async function observable(wc: WebContents) {
       "This page has too many frames to inspect safely.",
     );
   for (const frame of list) {
+    policyFor(wc)?.assertDestination(frame.url);
     const sensitive = await inPage(wc, frame.id, pageIsSensitive, null);
     if (sensitive)
       throw new ToolError(
         "SENSITIVE_PAGE",
         "Authentication or payment fields are visible. Stop observation and ask the user to complete them in the browser.",
       );
+    rememberPrivate(
+      await inPage(
+        wc,
+        frame.id,
+        privatePageValues,
+        policyFor(wc)?.config.sensitiveSelectors ?? [],
+      ),
+      privacySession(wc),
+    );
   }
   return list;
 }

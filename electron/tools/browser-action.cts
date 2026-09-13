@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { policyFor } from "../policy.cjs";
 import { defineTool, tabIdSchema, ToolError } from "./core.cjs";
 import { cdp, inPage, observable } from "./page.cjs";
 import { consumeSnapshot, type PageSnapshot } from "./browser-dom.cjs";
@@ -14,10 +15,11 @@ const keys: Record<string, number> = {
   Home: 36,
   End: 35,
 };
-export const browserAction = defineTool(
+const actionTool = defineTool(
   "browser_action",
-  "Act on an exact element ref from browser_dom: click, fill, select, press, or scroll. snapshot_id/frame_id must match that snapshot. value is text for fill, option value for select, key name for press, 'up'/'down' for scroll, or null for click. Each action consumes the snapshot. Clicks and typing use browser input events. Results acknowledge dispatch, not task success: inspect again to verify. Do not enter credentials or execute irreversible actions outside the user’s goal.",
+  "Act on an exact element ref from browser_dom: click, fill, select, press, or scroll. snapshot_id/frame_id must match that snapshot. value is text for fill, option value for select, key name for press, 'up'/'down' for scroll, or null for click. Provide intent as a short explanation of what this action should achieve (null only for existing deterministic plans). Each action consumes the snapshot. Clicks and typing use browser input events. Results acknowledge dispatch, not task success: inspect again to verify. Do not enter credentials or execute irreversible actions outside the user’s goal.",
   z.strictObject({
+    intent: z.string().min(1).max(300).nullable(),
     tab_id: tabIdSchema,
     frame_id: z.string().min(1).max(100),
     snapshot_id: z.string().uuid(),
@@ -43,6 +45,67 @@ export const browserAction = defineTool(
       );
     if (["fill", "select"].includes(args.action) && args.value === null)
       throw new ToolError("INVALID_ARGUMENTS", "This action requires a value.");
+    const policy = policyFor(wc);
+    if (policy) {
+      const frameFacts = await inPage(
+        wc,
+        args.frame_id,
+        () => location.href,
+        null,
+      );
+      policy.assertDestination(frameFacts);
+      const facts = await inPage(
+        wc,
+        args.frame_id,
+        ({ args, safe, blocked }) => {
+          const snapshot = (
+            globalThis as typeof globalThis & { __awlSnapshot?: PageSnapshot }
+          ).__awlSnapshot;
+          const el = snapshot?.nodes.get(args.ref)?.element;
+          if (
+            !el ||
+            !el.isConnected ||
+            snapshot?.id !== args.snapshot_id ||
+            snapshot.url !== location.href
+          )
+            return null;
+          const matches = (selector: string) => {
+            try {
+              return el.matches(selector);
+            } catch {
+              return false;
+            }
+          };
+          return {
+            url: location.href,
+            tag: el.tagName,
+            type: el.getAttribute("type") ?? "",
+            text: [
+              el.getAttribute("aria-label"),
+              el.textContent,
+              el.getAttribute("value"),
+            ]
+              .filter(Boolean)
+              .join(" ")
+              .slice(0, 2000),
+            href: el instanceof HTMLAnchorElement ? el.href : null,
+            allowed: safe.some(matches),
+            blocked: blocked.some(matches),
+          };
+        },
+        {
+          args,
+          safe: policy.controls(frameFacts, args.action),
+          blocked: policy.config.blockedControls,
+        },
+      );
+      if (!facts)
+        throw new ToolError(
+          "STALE_ELEMENT",
+          "Inspect the target again before acting.",
+        );
+      policy.assertAction(args.action, args.value, facts);
+    }
     consumeSnapshot(wc, args.frame_id, args.snapshot_id);
     const prepared = await inPage(
       wc,
@@ -331,3 +394,14 @@ export const browserAction = defineTool(
     };
   },
 );
+
+export const browserAction = {
+  ...actionTool,
+  execute: (args: unknown, context: Parameters<typeof actionTool.execute>[1]) =>
+    actionTool.execute(
+      args && typeof args === "object" && !("intent" in args)
+        ? { ...args, intent: null }
+        : args,
+      context,
+    ),
+};

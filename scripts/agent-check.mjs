@@ -233,3 +233,115 @@ assert.equal(questioning.list()[0].pending, null);
 console.log(
   "Passed: structured questions, private ownership, explicit resume, stale request rejection, truthful completion.",
 );
+
+// Session settings must affect requests and browser policy, survive restart,
+// and remain isolated from other chats. These checks run in CI only.
+const { mkdtemp, rm } = await import("node:fs/promises");
+const { tmpdir } = await import("node:os");
+const { join } = await import("node:path");
+const settingsDirectory = await mkdtemp(join(tmpdir(), "awl-settings-"));
+try {
+  const requests = [];
+  const access = new Map();
+  const options = {
+    directory: "/unused",
+    storageDirectory: settingsDirectory,
+    browser: { setAccess: (id, value) => access.set(id, value) },
+    publish: () => {},
+    client: {
+      responses: {
+        async create(body) {
+          requests.push(structuredClone(body));
+          return {
+            status: "completed",
+            output_text: "Observed the page.",
+            output: [
+              {
+                type: "reasoning",
+                id: "opaque-reasoning",
+                summary: [],
+                encrypted_content: "fixture-only",
+              },
+            ],
+          };
+        },
+      },
+    },
+  };
+  const settingsRuntime = new AgentRuntime(options);
+  await settingsRuntime.ready;
+  assert.deepEqual(settingsRuntime.send("settings", "Inspect this page"), {});
+  assert.equal(settingsRuntime.policyBusy(), true);
+  await finished(settingsRuntime);
+  assert.equal(settingsRuntime.policyBusy(), false);
+  assert.equal(requests[0].model, TERRA_MODEL);
+  assert.ok(
+    settingsRuntime.configure("settings", { model: "", access: "configured" })
+      .error,
+  );
+  assert.ok(
+    settingsRuntime.configure("settings", {
+      model: "fixture-model",
+      access: "full",
+    }).error,
+  );
+  assert.deepEqual(
+    settingsRuntime.configure("settings", {
+      model: "fixture-model",
+      access: "read_only",
+    }),
+    {},
+  );
+  assert.equal(access.get("settings"), "read_only");
+  assert.deepEqual(settingsRuntime.send("settings", "What changed?"), {});
+  assert.ok(
+    settingsRuntime.configure("settings", {
+      model: TERRA_MODEL,
+      access: "configured",
+    }).error,
+  );
+  await finished(settingsRuntime);
+  assert.equal(requests[1].model, "fixture-model");
+  assert.match(requests[1].instructions, /read-only browser mode/);
+  assert.ok(
+    requests[1].input.some((item) => item.content === "Observed the page."),
+  );
+  assert.ok(
+    !requests[1].input.some(
+      (item) => item.type === "reasoning" || item.type === "compaction",
+    ),
+  );
+  assert.equal(settingsRuntime.list()[0].messages[1].model, TERRA_MODEL);
+  assert.equal(
+    settingsRuntime.list()[0].messages.at(-1).model,
+    "fixture-model",
+  );
+  assert.equal(settingsRuntime.create("other").settings.access, "configured");
+  assert.equal(
+    settingsRuntime.list().find((chat) => chat.id === "other").settings.model,
+    TERRA_MODEL,
+  );
+  await settingsRuntime.flush();
+  settingsRuntime.close();
+  access.clear();
+  const restoredSettings = new AgentRuntime(options);
+  await restoredSettings.ready;
+  assert.deepEqual(
+    restoredSettings.list().find((chat) => chat.id === "settings").settings,
+    { model: "fixture-model", access: "read_only" },
+  );
+  assert.equal(access.get("settings"), "read_only");
+  assert.equal(
+    restoredSettings
+      .list()
+      .find((chat) => chat.id === "settings")
+      .messages.at(-1).model,
+    "fixture-model",
+  );
+  restoredSettings.close();
+} finally {
+  await rm(settingsDirectory, { recursive: true, force: true });
+}
+console.log(
+  "Passed: per-chat models, access controls, idle-only settings, portable context, persisted settings.",
+);

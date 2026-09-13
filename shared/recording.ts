@@ -36,4 +36,5 @@ export type RunEvent = {
   label: string;
   data?: unknown;
   image?: string;
+  evidence?: import("./evidence.js").SafeEvidence;
 };

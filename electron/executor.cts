@@ -1,9 +1,9 @@
+import { captureFailure } from "./evidence.cjs";
 import { readFile, writeFile, rename, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  capabilitySchema,
-  legacyCapabilitySchema,
+  parseCapability,
   validateCapability,
   type CapabilityDraft,
 } from "./tools/capability-write.cjs";
@@ -15,6 +15,7 @@ import {
   abortable,
   type ToolContext,
 } from "./tools/core.cjs";
+import { bindTarget, bindText } from "../shared/bindings.js";
 import type { Target } from "../shared/target.js";
 import type { ExecutionState, CapabilityRef } from "../shared/agent.js";
 
@@ -48,16 +49,10 @@ export async function loadCapability(root: string, ref: CapabilityRef) {
     source_chat_id !== ref.sourceChatId ||
     raw.id !== ref.id ||
     status !== "draft" ||
-    ![1, 2].includes(schema_version)
+    ![1, 2, 3].includes(schema_version)
   )
     throw new Error("Capability identity does not match.");
-  const draft =
-    schema_version === 1
-      ? capabilitySchema.parse({
-          ...legacyCapabilitySchema.parse(raw),
-          steps: raw.steps.map((step: object) => ({ ...step, target: null })),
-        })
-      : capabilitySchema.parse(raw);
+  const draft = parseCapability(schema_version, raw);
   validateCapability(draft);
   return {
     draft,
@@ -137,11 +132,15 @@ async function serializeValidation(path: string, update: () => Promise<void>) {
     if (validationWrites.get(path) === operation) validationWrites.delete(path);
   }
 }
+class BusinessOutcome extends Error {}
 export class Execution {
   readonly state: ExecutionState;
   readonly plan: ReturnType<typeof compile>;
   private tabId: string | null = null;
   private uncertain = false;
+  private recoveryCounts = new Map<string, number>();
+  private recoveryInterrupted = false;
+  private observedState = "No matching state observed.";
   private filled = new Map<string, string>();
   private lastObservation: ToolError | null = null;
   constructor(
@@ -163,6 +162,7 @@ export class Execution {
       outputs: {},
       error: null,
       uncertain: false,
+      result: null,
     };
   }
   async run(signal: AbortSignal, confirmCompleted = false) {
@@ -172,9 +172,39 @@ export class Execution {
       throw new Error(
         "Check the uncertain action and confirm it completed before continuing.",
       );
-    if (confirmCompleted && this.state.uncertain) this.state.step++;
+    const manual =
+      this.state.result?.kind === "failure" &&
+      this.state.result.code === "RISKY_ACTION";
+    if (manual && !confirmCompleted)
+      throw new Error(
+        "Complete the blocked action directly, then confirm it completed.",
+      );
+    if (confirmCompleted && (this.state.uncertain || manual)) {
+      const next =
+        this.plan.plan[this.state.step + (this.recoveryInterrupted ? 0 : 1)];
+      if (!this.tabId || !next || next.operation === "navigate")
+        throw new Error(
+          "No observable continuation checkpoint. Enter Repair instead of guessing.",
+        );
+      const target = bindTarget(
+        next.target ?? cssTarget(next.selector!),
+        this.state.inputs,
+      );
+      const observed = await resolveTarget(
+        this.context.browser.target(this.context.agentId, this.tabId),
+        target,
+      );
+      if (
+        next.operation === "assert_text" &&
+        !observed.text.includes(bindText(next.value!, this.state.inputs))
+      )
+        throw new Error("The continuation checkpoint has not been reached.");
+      if (!this.recoveryInterrupted) this.state.step++;
+      this.recoveryInterrupted = false;
+    }
     this.state.status = "running";
     this.state.error = null;
+    this.state.result = null;
     this.state.uncertain = false;
     this.changed();
     try {
@@ -182,7 +212,12 @@ export class Execution {
         signal.throwIfAborted();
         this.uncertain = false;
         this.lastObservation = null;
+        this.observedState = "No matching current target observed.";
         const step = this.plan.plan[this.state.step];
+        this.context.event?.(
+          "step",
+          `Step ${this.state.step + 1}: ${step.operation}; expected ${step.value ?? step.target?.value ?? step.selector ?? "declared control"}`,
+        );
         const deadline = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
         await toolSignal.run(deadline, () =>
           abortable(this.step(step, deadline), deadline),
@@ -204,8 +239,18 @@ export class Execution {
       }
       signal.throwIfAborted();
       this.state.status = "completed";
+      this.state.result = {
+        kind: "success",
+        outputs: { ...this.state.outputs },
+      };
       if (this.state.validation) await this.saveValidation(true);
     } catch (error) {
+      if (error instanceof BusinessOutcome) {
+        this.state.status = "completed";
+        this.state.outputs = {};
+        this.changed();
+        return;
+      }
       this.state.status = "paused";
       this.state.uncertain = this.uncertain;
       this.state.error = signal.aborted
@@ -215,14 +260,66 @@ export class Execution {
           : this.lastObservation
             ? `${this.lastObservation.code}: ${this.lastObservation.message} Timed out waiting for step ${this.state.step + 1}.`
             : "Step could not finish. Check the current page.";
+      const failedStep =
+        this.plan.plan[Math.min(this.state.step, this.plan.plan.length - 1)];
+      this.state.result = {
+        kind: "failure",
+        code: signal.aborted
+          ? "RUN_STOPPED"
+          : error instanceof ToolError
+            ? error.code
+            : (this.lastObservation?.code ?? "STEP_FAILED"),
+        message: this.state.error,
+        step: this.state.step,
+        expected: `${failedStep.operation}: ${failedStep.value ?? failedStep.target?.value ?? failedStep.selector ?? "declared target"}`,
+        observed: this.observedState,
+        uncertain: this.state.uncertain,
+      };
+      this.state.outputs = {};
+      try {
+        if (this.tabId) {
+          const deadline = AbortSignal.timeout(3000);
+          const evidence = await toolSignal.run(deadline, () =>
+            abortable(
+              captureFailure(
+                this.context.browser.target(this.context.agentId, this.tabId!),
+              ),
+              deadline,
+            ),
+          );
+          this.context.event?.(
+            "failure",
+            `${this.state.result.code}: ${this.state.error}`,
+            evidence,
+          );
+        }
+      } catch {
+        this.context.event?.(
+          "failure",
+          `${this.state.result.code}: failure capture unavailable`,
+        );
+      }
       if (this.state.validation) await this.saveValidation(false);
     }
     this.changed();
   }
   private async step(
-    step: CapabilityDraft["steps"][number],
+    rawStep: CapabilityDraft["steps"][number],
     signal: AbortSignal,
   ): Promise<void> {
+    const step = {
+      ...rawStep,
+      target: rawStep.target
+        ? bindTarget(rawStep.target, this.state.inputs)
+        : null,
+      selector: rawStep.selector
+        ? bindText(rawStep.selector, this.state.inputs, true)
+        : null,
+      value:
+        rawStep.operation === "assert_text" && rawStep.value
+          ? bindText(rawStep.value, this.state.inputs)
+          : rawStep.value,
+    };
     const ctx = { ...this.context, signal };
     if (step.operation === "navigate") {
       this.filled.clear();
@@ -261,10 +358,12 @@ export class Execution {
     for (;;) {
       signal.throwIfAborted();
       try {
+        if (await this.handleState(signal)) continue;
         observed = await resolveTarget(
           wc,
           step.target ?? cssTarget(step.selector!),
         );
+        this.observedState = observed.text.slice(0, 2000);
         if (
           step.operation === "assert_text" &&
           !observed.text.includes(step.value!)
@@ -278,9 +377,12 @@ export class Execution {
       } catch (error) {
         if (
           !(error instanceof ToolError) ||
-          !["TARGET_MISSING", "CHECKPOINT_MISSING", "PAGE_CHANGED"].includes(
-            error.code,
-          )
+          ![
+            "TARGET_MISSING",
+            "FRAME_MISSING",
+            "CHECKPOINT_MISSING",
+            "PAGE_CHANGED",
+          ].includes(error.code)
         )
           throw error;
         this.lastObservation = error;
@@ -333,11 +435,13 @@ export class Execution {
           new Promise((resolve) => setTimeout(resolve, 150)),
           signal,
         );
-        return this.step(step, signal);
+        return this.step(rawStep, signal);
       }
       if (
         error instanceof ToolError &&
         [
+          "POLICY_DENIED",
+          "RISKY_ACTION",
           "FOCUS_FAILED",
           "HIDDEN_ELEMENT",
           "DISABLED_ELEMENT",
@@ -354,6 +458,88 @@ export class Execution {
     }
     if (step.operation === "fill")
       this.filled.set(fieldKey, String(this.state.inputs[step.input!]));
+  }
+  private async handleState(signal: AbortSignal): Promise<boolean> {
+    if (!this.tabId) return false;
+    const wc = this.context.browser.target(this.context.agentId, this.tabId);
+    const matches: NonNullable<CapabilityDraft["handlers"]> = [];
+    for (const handler of this.artifact.draft.handlers ?? []) {
+      if (handler.before_step !== this.state.step) continue;
+      try {
+        const observation = await resolveTarget(
+          wc,
+          bindTarget(handler.when, this.state.inputs),
+        );
+        if (
+          observation.text.includes(bindText(handler.text, this.state.inputs))
+        )
+          matches.push(handler);
+      } catch (error) {
+        if (
+          !(error instanceof ToolError) ||
+          !["TARGET_MISSING", "FRAME_MISSING", "PAGE_CHANGED"].includes(
+            error.code,
+          )
+        )
+          throw error;
+      }
+    }
+    if (!matches.length) return false;
+    if (matches.length !== 1)
+      throw new ToolError(
+        "AMBIGUOUS_OUTCOME",
+        "Multiple declared states matched; human review is required.",
+      );
+    const handler = matches[0];
+    this.observedState = `Declared state ${handler.id}: ${handler.text}`;
+    if (handler.disposition === "outcome") {
+      this.state.result = {
+        kind: "business_outcome",
+        code: handler.id,
+        message: handler.message,
+        step: this.state.step,
+      };
+      throw new BusinessOutcome();
+    }
+    if (handler.disposition === "failure")
+      throw new ToolError(handler.id, handler.message);
+    const count = this.recoveryCounts.get(handler.id) ?? 0;
+    if (count >= handler.attempts)
+      throw new ToolError(
+        "RECOVERY_EXHAUSTED",
+        `Recovery ${handler.id} reached its attempt limit.`,
+      );
+    this.recoveryCounts.set(handler.id, count + 1);
+    this.context.event?.(
+      "recovery",
+      `${handler.id}: ${handler.action}; attempt ${count + 1}/${handler.attempts}`,
+    );
+    if (handler.action !== "wait") {
+      const target = await resolveTarget(
+        wc,
+        bindTarget(handler.target!, this.state.inputs),
+      );
+      this.recoveryInterrupted = true;
+      this.uncertain = true;
+      await browserAction.execute(
+        {
+          tab_id: this.tabId,
+          frame_id: target.frame_id,
+          snapshot_id: target.snapshot_id,
+          ref: target.ref,
+          action: handler.action,
+          value: handler.key,
+        },
+        { ...this.context, signal },
+      );
+      this.uncertain = false;
+      this.recoveryInterrupted = false;
+    }
+    await abortable(
+      new Promise((resolve) => setTimeout(resolve, handler.wait_ms)),
+      signal,
+    );
+    return true;
   }
   private async saveValidation(success: boolean) {
     return serializeValidation(this.artifact.path, async () => {
