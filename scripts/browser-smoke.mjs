@@ -188,11 +188,24 @@ try {
   await page
     .getByRole("separator", { name: "Resize browser panel" })
     .press("ArrowLeft");
-  await page.waitForTimeout(100);
-  const surface = await page.locator(".browser-surface").boundingBox();
-  const bounds = (await attached())[0].bounds;
+  let surface, bounds;
+  const geometryDeadline = Date.now() + 10000;
+  do {
+    surface = await page.locator(".browser-surface").boundingBox();
+    bounds = (await attached())[0].bounds;
+    if (
+      ["x", "y", "width", "height"].every(
+        (key) => Math.abs(surface[key] - bounds[key]) <= 1,
+      )
+    )
+      break;
+    await page.waitForTimeout(100);
+  } while (Date.now() < geometryDeadline);
   for (const key of ["x", "y", "width", "height"])
-    assert.ok(Math.abs(surface[key] - bounds[key]) <= 1, `${key} mismatch`);
+    assert.ok(
+      Math.abs(surface[key] - bounds[key]) <= 1,
+      `${key} mismatch: surface=${JSON.stringify(surface)}, native=${JSON.stringify(bounds)}`,
+    );
   await guest.getByRole("link", { name: "Next page" }).click();
   await guest
     .getByRole("heading", { name: "Second page", exact: true })
