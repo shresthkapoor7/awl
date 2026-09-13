@@ -139,6 +139,16 @@ function CapabilityLaunch({
     setBusy(true);
     setError(null);
     try {
+      const missingNumber = fields.find(
+        (field) =>
+          field.type === "number" &&
+          (!(inputs[field.name] ?? "").trim() ||
+            !Number.isFinite(Number(inputs[field.name]))),
+      );
+      if (missingNumber) {
+        setError(`Enter a number for ${missingNumber.name}.`);
+        return;
+      }
       const values = Object.fromEntries(
         fields.map((field) => [
           field.name,
