@@ -296,7 +296,15 @@ try {
       innerWidth,
   );
   await page.waitForTimeout(100);
-  assert.ok((await attached())[0].bounds.width > 1200);
+  const fullscreenSurface = await page
+    .locator(".browser-surface")
+    .boundingBox();
+  assert.ok(
+    Math.abs((await attached())[0].bounds.width - fullscreenSurface.width) <= 1,
+  );
+  assert.ok(
+    fullscreenSurface.width > (await page.evaluate(() => innerWidth)) * 0.9,
+  );
   assert.equal((await attached())[0].id, originalId);
   // CDP keyboard events bypass Electron's native before-input-event hook.
   await app.evaluate(({ BrowserWindow, webContents }, id) => {

@@ -59,8 +59,10 @@ try {
   await leftDivider.press("ArrowRight");
   assert.equal((await sidebar.boundingBox()).width, left + 16);
   const right = (await dock.boundingBox()).width;
+  await rightDivider.press("ArrowRight");
+  assert.equal((await dock.boundingBox()).width, right - 16);
   await rightDivider.press("ArrowLeft");
-  assert.equal((await dock.boundingBox()).width, right + 16);
+  assert.equal((await dock.boundingBox()).width, right);
   await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
   await page.getByRole("button", { name: "Hide browser", exact: true }).click();
   assert.equal(await dock.isVisible(), false);
