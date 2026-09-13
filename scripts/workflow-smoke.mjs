@@ -153,6 +153,30 @@ try {
     );
     await wc.debugger.sendCommand("Input.insertText", { text: "taught query" });
   }, base);
+  // Recording controls must remain inside the chat even on a wide window
+  // whose two side panels leave a narrow conversation column.
+  for (const width of [1260, 1100, 1480]) {
+    await app.evaluate(
+      ({ BrowserWindow }, width) =>
+        BrowserWindow.getAllWindows()[0].setSize(width, 960),
+      width,
+    );
+    await page.waitForFunction(() => {
+      const bounds = document
+        .querySelector(".conversation")
+        .getBoundingClientRect();
+      return [
+        ...document.querySelectorAll(".conversation-actions button"),
+      ].every((button) => {
+        const rect = button.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.left >= bounds.left &&
+          rect.right <= bounds.right
+        );
+      });
+    });
+  }
   await page.getByRole("button", { name: "Stop & build", exact: true }).click();
   await page.getByText(/Recording saved. Add OPENAI_API_KEY/).waitFor();
   await page.getByText(/recorded steps/).click();
