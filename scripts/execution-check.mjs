@@ -20,12 +20,13 @@ const server = createServer((req, res) => {
   if (
     req.url === "/outcome" ||
     req.url === "/interstitial" ||
-    req.url === "/recovery-limit"
+    req.url === "/recovery-limit" ||
+    req.url === "/manual-recovery"
   ) {
     res.end(
       req.url === "/outcome"
         ? '<p id="notice">No matching member</p>'
-        : `<p id="notice">Host bulletin</p><button id="ack" onclick="${req.url === "/recovery-limit" ? "" : "document.body.innerHTML='<p id=done>Ready</p>'"}">Acknowledge</button>`,
+        : `<p id="notice">Host bulletin</p><button id="ack" onclick="${req.url === "/recovery-limit" ? "" : "document.body.innerHTML='<p id=done>Ready</p>'"}">${req.url === "/manual-recovery" ? "Approve bulletin" : "Acknowledge"}</button>`,
     );
     return;
   }
@@ -92,7 +93,12 @@ try {
     );
   }, base);
   assert.equal(nested.ok, true);
-  for (const route of ["outcome", "interstitial", "recovery-limit"]) {
+  for (const route of [
+    "outcome",
+    "interstitial",
+    "recovery-limit",
+    "manual-recovery",
+  ]) {
     const draft = {
       id: "declared_states",
       name: "Declared states",
@@ -146,6 +152,17 @@ try {
           () => {},
         );
         await run.run(AbortSignal.timeout(10000));
+        if (route === "manual-recovery") {
+          if (run.state.result?.code !== "RISKY_ACTION")
+            throw new Error("Expected a policy handoff");
+          const tab = t.browser.tabs(route, "list", null).activeTabId;
+          await t.browser
+            .target(route, tab)
+            .executeJavaScript(
+              "document.body.innerHTML='<p id=done>Ready</p>'",
+            );
+          await run.run(AbortSignal.timeout(10000), true);
+        }
         return { ...run.state, events };
       },
       { draft, directory, route },
@@ -155,9 +172,17 @@ try {
       assert.equal(result.result.kind, "business_outcome");
       assert.equal(result.result.code, "member_not_found");
       assert.deepEqual(result.outputs, {});
-    } else if (route === "interstitial") {
+    } else if (route === "interstitial" || route === "manual-recovery") {
       assert.equal(result.result.kind, "success");
       assert.equal(result.outputs.result, "Ready");
+      if (route === "manual-recovery")
+        assert.equal(
+          result.events.filter(
+            (event) =>
+              event.kind === "step" && event.label.startsWith("Step 2:"),
+          ).length,
+          2,
+        );
     } else {
       assert.equal(result.status, "paused");
       assert.equal(result.result.code, "RECOVERY_EXHAUSTED");

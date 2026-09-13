@@ -139,6 +139,7 @@ export class Execution {
   private tabId: string | null = null;
   private uncertain = false;
   private recoveryCounts = new Map<string, number>();
+  private recoveryInterrupted = false;
   private observedState = "No matching state observed.";
   private filled = new Map<string, string>();
   private lastObservation: ToolError | null = null;
@@ -179,7 +180,8 @@ export class Execution {
         "Complete the blocked action directly, then confirm it completed.",
       );
     if (confirmCompleted && (this.state.uncertain || manual)) {
-      const next = this.plan.plan[this.state.step + 1];
+      const next =
+        this.plan.plan[this.state.step + (this.recoveryInterrupted ? 0 : 1)];
       if (!this.tabId || !next || next.operation === "navigate")
         throw new Error(
           "No observable continuation checkpoint. Enter Repair instead of guessing.",
@@ -197,7 +199,8 @@ export class Execution {
         !observed.text.includes(bindText(next.value!, this.state.inputs))
       )
         throw new Error("The continuation checkpoint has not been reached.");
-      this.state.step++;
+      if (!this.recoveryInterrupted) this.state.step++;
+      this.recoveryInterrupted = false;
     }
     this.state.status = "running";
     this.state.error = null;
@@ -209,6 +212,7 @@ export class Execution {
         signal.throwIfAborted();
         this.uncertain = false;
         this.lastObservation = null;
+        this.observedState = "No matching current target observed.";
         const step = this.plan.plan[this.state.step];
         this.context.event?.(
           "step",
@@ -515,6 +519,7 @@ export class Execution {
         wc,
         bindTarget(handler.target!, this.state.inputs),
       );
+      this.recoveryInterrupted = true;
       this.uncertain = true;
       await browserAction.execute(
         {
@@ -528,6 +533,7 @@ export class Execution {
         { ...this.context, signal },
       );
       this.uncertain = false;
+      this.recoveryInterrupted = false;
     }
     await abortable(
       new Promise((resolve) => setTimeout(resolve, handler.wait_ms)),

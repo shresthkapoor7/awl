@@ -162,10 +162,14 @@ export function validateCapability(draft: CapabilityDraft) {
   }
   const handlerIds = new Set<string>();
   for (const handler of draft.handlers ?? []) {
-    if (handlerIds.has(handler.id) || handler.before_step >= draft.steps.length)
+    if (
+      handlerIds.has(handler.id) ||
+      handler.before_step >= draft.steps.length ||
+      draft.steps[handler.before_step]?.operation === "navigate"
+    )
       throw new ToolError(
         "INVALID_CAPABILITY",
-        "Handler IDs must be unique and reference an existing step.",
+        "Handler IDs must be unique and reference an existing non-navigation step.",
       );
     handlerIds.add(handler.id);
     checkTarget(handler.when);
