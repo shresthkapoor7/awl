@@ -73,10 +73,17 @@ export const capabilitySchema = capabilityV2Schema.extend({
 export type CapabilityDraft = z.infer<typeof capabilityV2Schema> & {
   handlers?: z.infer<typeof handlerSchema>[] | null;
 };
-export function parseCapability(version: number, raw: unknown): CapabilityDraft {
+export function parseCapability(
+  version: number,
+  raw: unknown,
+): CapabilityDraft {
   if (version === 1) {
     const old = legacyCapabilitySchema.parse(raw);
-    return { ...old, steps: old.steps.map((step) => ({ ...step, target: null })), handlers: [] };
+    return {
+      ...old,
+      steps: old.steps.map((step) => ({ ...step, target: null })),
+      handlers: [],
+    };
   }
   if (version === 2) return { ...capabilityV2Schema.parse(raw), handlers: [] };
   if (version === 3) return capabilitySchema.parse(raw);
@@ -120,34 +127,66 @@ export function validateCapability(draft: CapabilityDraft) {
     );
   const checkBinding = (text: string | null | undefined) => {
     for (const name of parameterNames(text ?? ""))
-      if (!inputs.has(name)) throw new ToolError("INVALID_CAPABILITY", `Undeclared parameter: ${name}`);
+      if (!inputs.has(name))
+        throw new ToolError(
+          "INVALID_CAPABILITY",
+          `Undeclared parameter: ${name}`,
+        );
   };
-  const checkTarget = (target: z.infer<typeof targetSchema> | null | undefined) => {
+  const checkTarget = (
+    target: z.infer<typeof targetSchema> | null | undefined,
+  ) => {
     if (!target) return;
-    checkBinding(target.value); checkBinding(target.within);
+    checkBinding(target.value);
+    checkBinding(target.within);
     target.shadow.forEach(checkBinding);
-    if (parameterNames(target.role ?? "").length || parameterNames(target.frame?.url ?? "").length || parameterNames(target.frame?.name ?? "").length)
-      throw new ToolError("INVALID_CAPABILITY", "Frame identities and roles must remain literal.");
+    if (
+      parameterNames(target.role ?? "").length ||
+      parameterNames(target.frame?.url ?? "").length ||
+      parameterNames(target.frame?.name ?? "").length
+    )
+      throw new ToolError(
+        "INVALID_CAPABILITY",
+        "Frame identities and roles must remain literal.",
+      );
   };
   for (const step of draft.steps) {
-    checkTarget(step.target); checkBinding(step.selector);
+    checkTarget(step.target);
+    checkBinding(step.selector);
     if (step.operation === "assert_text") checkBinding(step.value);
     else if (parameterNames(step.value ?? "").length)
-      throw new ToolError("INVALID_CAPABILITY", "Only text assertions and targets accept template bindings.");
+      throw new ToolError(
+        "INVALID_CAPABILITY",
+        "Only text assertions and targets accept template bindings.",
+      );
   }
   const handlerIds = new Set<string>();
   for (const handler of draft.handlers ?? []) {
     if (handlerIds.has(handler.id) || handler.before_step >= draft.steps.length)
-      throw new ToolError("INVALID_CAPABILITY", "Handler IDs must be unique and reference an existing step.");
+      throw new ToolError(
+        "INVALID_CAPABILITY",
+        "Handler IDs must be unique and reference an existing step.",
+      );
     handlerIds.add(handler.id);
-    checkTarget(handler.when); checkTarget(handler.target); checkBinding(handler.text);
+    checkTarget(handler.when);
+    checkTarget(handler.target);
+    checkBinding(handler.text);
     if (handler.disposition === "recover") {
-      if (!handler.action || (handler.action !== "wait" && !handler.target) ||
-          (handler.action === "wait" && handler.target) ||
-          (handler.action === "press" ? !handler.key : handler.key !== null))
-        throw new ToolError("INVALID_CAPABILITY", "Recovery needs a bounded wait or an observed click/key target.");
+      if (
+        !handler.action ||
+        (handler.action !== "wait" && !handler.target) ||
+        (handler.action === "wait" && handler.target) ||
+        (handler.action === "press" ? !handler.key : handler.key !== null)
+      )
+        throw new ToolError(
+          "INVALID_CAPABILITY",
+          "Recovery needs a bounded wait or an observed click/key target.",
+        );
     } else if (handler.action || handler.target || handler.key)
-      throw new ToolError("INVALID_CAPABILITY", "Terminal outcomes cannot dispatch recovery actions.");
+      throw new ToolError(
+        "INVALID_CAPABILITY",
+        "Terminal outcomes cannot dispatch recovery actions.",
+      );
   }
   const assigned = new Set<string>();
   for (const step of draft.steps) {
@@ -269,8 +308,14 @@ const writeTool = defineTool(
   capabilitySchema,
   async (draft, context) => {
     validateCapability(draft);
-    try { assertPublicArtifact(draft); }
-    catch { throw new ToolError("PRIVATE_ARTIFACT", "Private literals cannot be saved. Use input bindings or structural targets."); }
+    try {
+      assertPublicArtifact(draft);
+    } catch {
+      throw new ToolError(
+        "PRIVATE_ARTIFACT",
+        "Private literals cannot be saved. Use input bindings or structural targets.",
+      );
+    }
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(context.agentId))
       throw new ToolError("INVALID_SESSION", "Invalid chat identity.");
     context.signal.throwIfAborted();
@@ -332,6 +377,10 @@ const writeTool = defineTool(
 export const capabilityWrite = {
   ...writeTool,
   execute: (args: unknown, context: Parameters<typeof writeTool.execute>[1]) =>
-    writeTool.execute(args && typeof args === "object" && !("handlers" in args)
-      ? { ...args, handlers: [] } : args, context),
+    writeTool.execute(
+      args && typeof args === "object" && !("handlers" in args)
+        ? { ...args, handlers: [] }
+        : args,
+      context,
+    ),
 };

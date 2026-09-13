@@ -69,7 +69,12 @@ export function HumanRequest({
           />
         </>
       )}
-      <button className="primary-button" disabled={busy}>
+      <button
+        className="primary-button"
+        disabled={
+          busy || (request.reason !== "authentication" && !answer.trim())
+        }
+      >
         {busy ? "Checking…" : "Resume"}
       </button>
       {repair && (

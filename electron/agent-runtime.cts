@@ -1,3 +1,7 @@
+import { redactText } from "./privacy.cjs";
+import { captureFailure } from "./evidence.cjs";
+import { browserWait } from "./tools/browser-wait.cjs";
+import { toolSignal as observationScope, abortable } from "./tools/core.cjs";
 import { WorkspaceStore } from "./workspace-store.cjs";
 import {
   budgetContext,
@@ -306,6 +310,11 @@ export class AgentRuntime {
     if (!this.options.client && !this.executions.has(id))
       return { error: "Add OPENAI_API_KEY to .env and restart awl." };
     const pending = session.chat.pending;
+    if (pending.reason !== "authentication" && !answer.trim())
+      return {
+        error:
+          "Briefly describe what changed, or choose the applicable confirmation, before resuming.",
+      };
     const controller = (session.controller = new AbortController());
     try {
       const state = this.options.browser.tabs(id, "list", null);
@@ -326,13 +335,22 @@ export class AgentRuntime {
           },
         );
         observation = result.data;
-        if (
-          pending.expected_text &&
-          !(result.data as { text: string }).text.includes(
-            pending.expected_text,
-          )
-        )
-          throw new Error("The expected page condition is not visible yet.");
+        if (pending.expected_text)
+          await browserWait.execute(
+            {
+              tab_id: tab.id,
+              condition: "text",
+              contains: pending.expected_text,
+              timeout_ms: 1000,
+            },
+            {
+              agentId: id,
+              browser: this.options.browser,
+              artifactDirectory: this.options.directory,
+              signal: controller.signal,
+              rename: () => {},
+            },
+          );
       } else if (pending.expected_text || pending.reason === "authentication")
         throw new Error("Open the expected page before resuming.");
       controller.signal.throwIfAborted();
@@ -340,8 +358,19 @@ export class AgentRuntime {
         throw new Error("The request changed.");
       const execution = this.executions.get(id);
       if (execution) {
-        if ((execution.state.uncertain || (execution.state.result?.kind === "failure" && execution.state.result.code === "RISKY_ACTION")) && answer !== "Step completed")
+        if (
+          (execution.state.uncertain ||
+            (execution.state.result?.kind === "failure" &&
+              execution.state.result.code === "RISKY_ACTION")) &&
+          answer !== "Step completed"
+        )
           throw new Error("Confirm the uncertain action first.");
+        this.journal.add(
+          id,
+          "human",
+          "resume",
+          `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page")}`,
+        );
         session.chat.pending = null;
         session.chat.status = "running";
         session.chat.control = {
@@ -353,6 +382,12 @@ export class AgentRuntime {
         void this.runExecution(session, execution, answer === "Step completed");
         return {};
       }
+      this.journal.add(
+        id,
+        "human",
+        "resume",
+        `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page")}`,
+      );
       session.chat.pending = null;
       session.controller = null;
       session.history.push({
@@ -474,6 +509,10 @@ export class AgentRuntime {
             browser: this.options.browser,
             artifactDirectory: this.options.directory,
             rename: () => {},
+            event: (kind, label, evidence) => {
+              const event = this.journal.add(id, "runtime", kind, label);
+              if (evidence) event.evidence = evidence;
+            },
           },
           () => {
             session.chat.execution = structuredClone(execution.state);
@@ -579,13 +618,14 @@ export class AgentRuntime {
         session.chat.messages.push({
           id: randomUUID(),
           role: "assistant",
-          text: execution.state.result?.kind === "business_outcome"
-            ? `${execution.state.result.code}: ${execution.state.result.message}`
-            : `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
-            execution.state.outputs,
-          )
-            .map(([key, value]) => `${key}: ${value}`)
-            .join("\n")}`,
+          text:
+            execution.state.result?.kind === "business_outcome"
+              ? `${execution.state.result.code}: ${execution.state.result.message}`
+              : `Finished ${execution.artifact.draft.name}. Final checkpoint passed.\n\n${Object.entries(
+                  execution.state.outputs,
+                )
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join("\n")}`,
         });
         this.executions.delete(session.chat.id);
       } else
@@ -596,13 +636,27 @@ export class AgentRuntime {
               ? "authentication"
               : "unexpected_state",
           question: `Step ${execution.state.step + 1} paused. ${execution.state.error}${execution.state.uncertain ? " An action may have happened. Confirm it completed before advancing; otherwise use Repair." : " Check the page, then Resume to retry this step or enter Repair."}`,
-          choices: execution.state.uncertain || (execution.state.result?.kind === "failure" && execution.state.result.code === "RISKY_ACTION") ? ["Step completed"] : [],
+          choices:
+            execution.state.uncertain ||
+            (execution.state.result?.kind === "failure" &&
+              execution.state.result.code === "RISKY_ACTION")
+              ? ["Step completed"]
+              : [],
           expected_text: null,
         });
     } catch {
-      session.chat.status = "error";
-      session.chat.error =
-        "Execution could not finish. Check the page before continuing.";
+      this.question(session, {
+        reason: "unexpected_state",
+        question:
+          "The continuation checkpoint is not visible. Check the page or enter Repair.",
+        choices:
+          execution.state.uncertain ||
+          (execution.state.result?.kind === "failure" &&
+            execution.state.result.code === "RISKY_ACTION")
+            ? ["Step completed"]
+            : [],
+        expected_text: null,
+      });
     } finally {
       session.controller = null;
       if (session.chat.control) session.chat.control.owner = "human";
@@ -937,12 +991,45 @@ export class AgentRuntime {
                   message: "Use one of the advertised tools.",
                 },
               };
+          let intent = "";
+          try {
+            const args = JSON.parse(call.arguments);
+            if (typeof args.intent === "string")
+              intent = `; ${args.intent.slice(0, 300)}`;
+          } catch {
+            /* Invalid arguments already have a structured tool error. */
+          }
           const evidence = this.journal.add(
             session.chat.id,
             "agent",
             "tool",
-            `${call.name}: ${result.ok ? "returned" : result.error.code}`,
+            `${call.name}: ${result.ok ? "returned" : result.error.code}${intent}`,
           );
+          if (!result.ok) {
+            try {
+              const state = this.options.browser.tabs(
+                session.chat.id,
+                "list",
+                null,
+              );
+              if (state.activeTabId) {
+                const deadline = AbortSignal.timeout(3000);
+                evidence.evidence = await observationScope.run(deadline, () =>
+                  abortable(
+                    captureFailure(
+                      this.options.browser.target(
+                        session.chat.id,
+                        state.activeTabId!,
+                      ),
+                    ),
+                    deadline,
+                  ),
+                );
+              }
+            } catch {
+              /* The error event remains useful when the page is gone. */
+            }
+          }
           if (result.ok && call.name !== "evidence_read")
             this.journal.attach(
               session.chat.id,
@@ -996,16 +1083,23 @@ export class AgentRuntime {
             });
           if (session.chat.pending || session.chat.status === "completed")
             return;
-          if (!result.ok && ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION"].includes(result.error.code)) {
+          if (
+            !result.ok &&
+            ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION"].includes(
+              result.error.code,
+            )
+          ) {
             session.chat.messages.push({
               id: randomUUID(),
               role: "assistant",
               text: result.error.message,
             });
             this.question(session, {
-              reason: result.error.code === "SENSITIVE_PAGE" ? "authentication" : "unexpected_state",
-              question:
-                result.error.message,
+              reason:
+                result.error.code === "SENSITIVE_PAGE"
+                  ? "authentication"
+                  : "unexpected_state",
+              question: result.error.message,
               choices: [],
               expected_text: null,
             });

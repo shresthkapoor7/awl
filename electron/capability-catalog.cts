@@ -5,9 +5,7 @@ import {
 } from "./executor.cjs";
 import { readdir, readFile, lstat, rm, rmdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import {
-  parseCapability,
-} from "./tools/capability-write.cjs";
+import { parseCapability } from "./tools/capability-write.cjs";
 import type { CapabilityRef, SavedCapability } from "../shared/agent.js";
 export async function deleteCapabilityArtifacts(
   root: string,

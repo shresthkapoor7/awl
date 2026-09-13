@@ -182,7 +182,10 @@ try {
   );
   assert.deepEqual(
     (await new WorkspaceStore(corruptDirectory).load())[0].history,
-    chat.messages.map((message) => ({ role: message.role, content: message.text })),
+    chat.messages.map((message) => ({
+      role: message.role,
+      content: message.text,
+    })),
   );
   corruptRuntime.close();
   await rm(corruptDirectory, { recursive: true });

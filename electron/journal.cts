@@ -34,8 +34,7 @@ export class Journal {
     const events = this.events.get(id) ?? [];
     const event = events.find((item) => item.sequence === sequence);
     if (!event) return;
-    if (JSON.stringify(data).length <= 64000)
-      event.data = redactData(data);
+    if (JSON.stringify(data).length <= 64000) event.data = redactData(data);
     if (image?.startsWith("data:image/png;base64,") && image.length < 2_000_000)
       event.image = image;
     let evidence = 0,

@@ -101,9 +101,19 @@ function installRecorder({
       at: new Date().toISOString(),
       outcome: "Observed human action; result not yet verified.",
     };
-    if (step.target && g.__awlPrivate().some((value) => JSON.stringify(step.target).includes(JSON.stringify(value).slice(1, -1)))) {
+    if (
+      step.target &&
+      g
+        .__awlPrivate()
+        .some((value) =>
+          JSON.stringify(step.target).includes(
+            JSON.stringify(value).slice(1, -1),
+          ),
+        )
+    ) {
       step.target = null;
-      step.outcome = "Private target text omitted; inspect a structural or parameterized target before replay.";
+      step.outcome =
+        "Private target text omitted; inspect a structural or parameterized target before replay.";
     }
     // Deliver before navigation can destroy this document. The queue is a
     // fallback if the native binding is briefly unavailable.

@@ -56,6 +56,16 @@ export function RunHistory({ events }: { events: RunEvent[] }) {
         {new Date(selected.at).toLocaleTimeString()} · {selected.actor} ·{" "}
         {selected.label}
       </p>
+      {selected.evidence && (
+        <details>
+          <summary>
+            Failure snapshot · {selected.evidence.frames.length} frames
+          </summary>
+          <pre className="capability-code">
+            {JSON.stringify(selected.evidence, null, 2)}
+          </pre>
+        </details>
+      )}
       {selected.image ? (
         <img
           className="history-capture"

@@ -34,10 +34,18 @@ function createWindow() {
   });
   installWorkspaceShortcuts(window, window.webContents);
   let local = {};
-  try { local = parseEnv(readFileSync(path.join(app.getAppPath(), ".env"), "utf8")); }
-  catch (error) { if (error.code !== "ENOENT") throw error; }
+  try {
+    local = parseEnv(readFileSync(path.join(app.getAppPath(), ".env"), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
   const policyFile = process.env.AWL_POLICY_FILE || local.AWL_POLICY_FILE;
-  const browser = installBrowser(window, loadPolicy(policyFile ? path.resolve(app.getAppPath(), policyFile) : undefined));
+  const browser = installBrowser(
+    window,
+    loadPolicy(
+      policyFile ? path.resolve(app.getAppPath(), policyFile) : undefined,
+    ),
+  );
   installAgent(window, browser);
   const developmentUrl = process.env.AWL_DEV_URL;
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

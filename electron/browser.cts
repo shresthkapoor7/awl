@@ -73,7 +73,10 @@ function normalizeURL(value: unknown): string {
   return new URL(url).href;
 }
 
-export function installBrowser(window: BrowserWindow, policy: BrowserPolicy = loadPolicy()): BrowserAccess {
+export function installBrowser(
+  window: BrowserWindow,
+  policy: BrowserPolicy = loadPolicy(),
+): BrowserAccess {
   const owners = new Map<string, "human" | "agent">();
   let humanInput: ((id: string) => void) | undefined;
   const interruptHumanInput = (id: string) => {
@@ -531,7 +534,8 @@ export function installBrowser(window: BrowserWindow, policy: BrowserPolicy = lo
     });
     wc.setWindowOpenHandler((details) => {
       if (
-        (owners.get(browser.id) === "agent" && !policy.destination(details.url)) ||
+        (owners.get(browser.id) === "agent" &&
+          !policy.destination(details.url)) ||
         (!webURL(details.url) && details.url !== "about:blank") ||
         browser.tabs.length >= 12
       ) {
@@ -560,7 +564,8 @@ export function installBrowser(window: BrowserWindow, policy: BrowserPolicy = lo
       event: Electron.Event & { url: string; isMainFrame: boolean },
     ) => {
       if (
-        (owners.get(browser.id) === "agent" && !policy.destination(event.url)) ||
+        (owners.get(browser.id) === "agent" &&
+          !policy.destination(event.url)) ||
         (event.isMainFrame && !webURL(event.url) && event.url !== "about:blank")
       ) {
         event.preventDefault();
@@ -631,8 +636,13 @@ export function installBrowser(window: BrowserWindow, policy: BrowserPolicy = lo
     isolated.setPermissionCheckHandler(() => false);
     // Block frame requests before network effects, including form posts and redirects.
     isolated.webRequest.onBeforeRequest((details, callback) => {
-      const frameRequest = ["mainFrame", "subFrame"].includes(details.resourceType);
-      const blocked = owners.get(id) === "agent" && frameRequest && !policy.destination(details.url);
+      const frameRequest = ["mainFrame", "subFrame"].includes(
+        details.resourceType,
+      );
+      const blocked =
+        owners.get(id) === "agent" &&
+        frameRequest &&
+        !policy.destination(details.url);
       callback({ cancel: blocked });
     });
     const browser: AgentBrowser = {

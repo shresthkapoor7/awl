@@ -72,7 +72,22 @@ await writeFile(
   JSON.stringify(contract),
 );
 const policyFile = join(directory, "policy.json");
-await writeFile(policyFile, JSON.stringify({ destinations: [{ origin: base, paths: ["/*"] }], actions: ["navigate", "click", "fill", "select", "press", "scroll"], safeControls: [{ origin: base, path: "/*", selector: "button", actions: ["click", "press"] }], blockedControls: [] }));
+await writeFile(
+  policyFile,
+  JSON.stringify({
+    destinations: [{ origin: base, paths: ["/*"] }],
+    actions: ["navigate", "click", "fill", "select", "press", "scroll"],
+    safeControls: [
+      {
+        origin: base,
+        path: "/*",
+        selector: "button",
+        actions: ["click", "press"],
+      },
+    ],
+    blockedControls: [],
+  }),
+);
 const env = {
   AWL_POLICY_FILE: policyFile,
   ...process.env,
@@ -221,7 +236,10 @@ try {
   ).chats.length;
   await numeric.fill("12");
   await numeric.fill("");
-  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .locator(".capability-entry")
+    .getByRole("button", { name: /^Validate/ })
+    .click();
   await page
     .getByRole("alert")
     .filter({ hasText: "Enter a number for query." })
@@ -231,7 +249,10 @@ try {
     sessionsBeforeBlank,
   );
   await numeric.fill("0");
-  await page.locator(".capability-entry").getByRole("button", { name: /^Validate/ }).click();
+  await page
+    .locator(".capability-entry")
+    .getByRole("button", { name: /^Validate/ })
+    .click();
   await page
     .getByText("results: Results: 0", { exact: false })
     .waitFor({ timeout: 20000 });

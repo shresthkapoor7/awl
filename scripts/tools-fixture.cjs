@@ -13,7 +13,12 @@ app.whenReady().then(async () => {
     },
   });
   const { BrowserPolicy } = require("../dist-electron/electron/policy.cjs");
-  const policy = new BrowserPolicy({ destinations: [], actions: ["navigate", "click", "fill", "select", "press", "scroll"], safeControls: [], blockedControls: [] });
+  const policy = new BrowserPolicy({
+    destinations: [],
+    actions: ["navigate", "click", "fill", "select", "press", "scroll"],
+    safeControls: [],
+    blockedControls: [],
+  });
   const browser = installBrowser(window, policy);
   const present = (id) =>
     window.webContents.executeJavaScript(
@@ -24,7 +29,12 @@ app.whenReady().then(async () => {
     const url = new URL(args[1]);
     if (url.protocol === "http:" && url.hostname === "127.0.0.1") {
       policy.config.destinations.push({ origin: url.origin, paths: ["/*"] });
-      policy.config.safeControls.push({ origin: url.origin, path: "/*", selector: "*", actions: ["click", "press"] });
+      policy.config.safeControls.push({
+        origin: url.origin,
+        path: "/*",
+        selector: "*",
+        actions: ["click", "press"],
+      });
     }
     const state = await start(...args);
     await present(args[0]);

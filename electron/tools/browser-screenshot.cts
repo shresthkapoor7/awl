@@ -10,8 +10,20 @@ export const browserScreenshot = defineTool(
   async ({ tab_id }, context) => {
     const wc = context.browser.target(context.agentId, tab_id);
     for (const frame of await observable(wc))
-      if ((await inPage(wc, frame.id, privatePageValues, policyFor(wc)?.config.sensitiveSelectors ?? [])).length)
-        throw new ToolError("PRIVATE_SCREENSHOT", "Personal data is visible. Use redacted DOM inspection instead of a screenshot.");
+      if (
+        (
+          await inPage(
+            wc,
+            frame.id,
+            privatePageValues,
+            policyFor(wc)?.config.sensitiveSelectors ?? [],
+          )
+        ).length
+      )
+        throw new ToolError(
+          "PRIVATE_SCREENSHOT",
+          "Personal data is visible. Use redacted DOM inspection instead of a screenshot.",
+        );
     context.signal.throwIfAborted();
     const { cssVisualViewport: viewport } = await cdp(
       wc,
@@ -34,8 +46,20 @@ export const browserScreenshot = defineTool(
       },
     });
     for (const frame of await observable(wc))
-      if ((await inPage(wc, frame.id, privatePageValues, policyFor(wc)?.config.sensitiveSelectors ?? [])).length)
-        throw new ToolError("PRIVATE_SCREENSHOT", "Personal data is visible. Use redacted DOM inspection instead of a screenshot.");
+      if (
+        (
+          await inPage(
+            wc,
+            frame.id,
+            privatePageValues,
+            policyFor(wc)?.config.sensitiveSelectors ?? [],
+          )
+        ).length
+      )
+        throw new ToolError(
+          "PRIVATE_SCREENSHOT",
+          "Personal data is visible. Use redacted DOM inspection instead of a screenshot.",
+        );
     if (typeof data !== "string" || data.length > 7_000_000)
       throw new ToolError(
         "CAPTURE_FAILED",

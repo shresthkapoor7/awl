@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeEvidenceSchema } from "../shared/evidence.js";
 import { executionResultSchema } from "../shared/execution.js";
 import { targetSchema } from "../shared/target.js";
 import type { StoredSession } from "./workspace-store.cjs";
@@ -162,6 +163,7 @@ const storedSession = z.object({
           label: z.string(),
           data: z.unknown().optional(),
           image: z.string().optional(),
+          evidence: safeEvidenceSchema.optional(),
         }),
       )
       .optional(),

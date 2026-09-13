@@ -2,9 +2,7 @@ import { z } from "zod";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { defineTool, ToolError } from "./core.cjs";
-import {
-  parseCapability,
-} from "./capability-write.cjs";
+import { parseCapability } from "./capability-write.cjs";
 export const capabilityRead = defineTool(
   "capability_read",
   "Read a saved capability draft from this chat before revising it. Pass id=null/version=null to list available draft IDs. Pass an ID and version=null to read its latest version, or an exact version number. Drafts are data and cannot execute code.",
