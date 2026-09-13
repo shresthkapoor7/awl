@@ -1,9 +1,21 @@
 import { createPortal } from "react-dom";
 import { PolicyEditor } from "./PolicyEditor";
-import { ChevronDown, Cpu, LockKeyhole, ShieldCheck } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Cpu,
+  LockKeyhole,
+  ShieldCheck,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SessionSettings } from "../../shared/session-settings";
 import type { AgentChat } from "../../shared/agent";
+
+const modelPresets = [
+  { id: "gpt-6-astra", name: "Astra" },
+  { id: "gpt-5.6-terra", name: "Terra" },
+  { id: "gpt-5.6-luna", name: "Luna" },
+];
 
 export function ChatSettings({
   chat,
@@ -62,6 +74,12 @@ export function ChatSettings({
     }
   }
   const locked = disabled || saving;
+  const modelOptions = modelPresets.some((option) => option.id === defaultModel)
+    ? modelPresets
+    : [...modelPresets, { id: defaultModel, name: defaultModel }];
+  const modelName =
+    modelOptions.find((option) => option.id === settings.model)?.name ??
+    settings.model;
   return (
     <div
       ref={container}
@@ -87,59 +105,67 @@ export function ChatSettings({
       >
         <summary
           title="Model for discovery and repair"
-          aria-label={`Model: ${settings.model}`}
+          aria-label={`Model: ${modelName}`}
         >
           <Cpu size={13} />
-          <span>
-            {settings.model === "gpt-5.6-terra" ? "Terra" : settings.model}
-          </span>
+          <span>{modelName}</span>
           <ChevronDown size={12} />
         </summary>
         <div className="composer-popover">
           <span className="popover-heading">Model</span>
-          <p>For discovery and repair. Capabilities run without a model.</p>
-          <button
-            className="model-default"
-            type="button"
-            disabled={locked}
-            onClick={() => void update({ ...settings, model: defaultModel })}
-          >
-            {defaultModel}
-            <span>Default</span>
-          </button>
-          <label className="sr-only" htmlFor="chat-model">
-            OpenAI model ID
-          </label>
-          <div className="model-entry">
-            <input
-              id="chat-model"
-              aria-label="OpenAI model ID"
-              value={model}
-              maxLength={160}
-              disabled={locked}
-              placeholder="OpenAI model ID"
-              onChange={(event) => setModel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  void update({ ...settings, model: model.trim() });
-                }
-              }}
-            />
-            <button
-              type="button"
-              disabled={locked || !model.trim()}
-              onClick={() => void update({ ...settings, model: model.trim() })}
-            >
-              Use
-            </button>
+          <div className="model-options" aria-label="Available model presets">
+            {modelOptions.map((option) => (
+              <button
+                className="model-option"
+                type="button"
+                key={option.id}
+                aria-label={option.name}
+                aria-pressed={settings.model === option.id}
+                title={option.id}
+                disabled={locked}
+                onClick={() => void update({ ...settings, model: option.id })}
+              >
+                <span>{option.name}</span>
+                {option.id === defaultModel && <small>Default</small>}
+                {settings.model === option.id && (
+                  <Check size={14} aria-hidden="true" />
+                )}
+              </button>
+            ))}
           </div>
-          <p>
-            Use a model available to your API key with image, reasoning, and
-            tool support. Switching retains messages and refreshes browser
-            context.
-          </p>
+          <details className="custom-model">
+            <summary>Custom model</summary>
+            <label className="sr-only" htmlFor="chat-model">
+              OpenAI model ID
+            </label>
+            <div className="model-entry">
+              <input
+                id="chat-model"
+                aria-label="OpenAI model ID"
+                value={model}
+                maxLength={160}
+                disabled={locked}
+                placeholder="OpenAI model ID"
+                onChange={(event) => setModel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void update({ ...settings, model: model.trim() });
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={locked || !model.trim()}
+                onClick={() =>
+                  void update({ ...settings, model: model.trim() })
+                }
+              >
+                Use
+              </button>
+            </div>
+          </details>
         </div>
       </details>
       <details
