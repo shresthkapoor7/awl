@@ -34,7 +34,24 @@ export class WorkspaceStore {
           !Array.isArray(value.history)
         )
           continue;
-        sessions.push({ chat: value.chat, history: value.history });
+        const saved = {
+          chat: value.chat,
+          history: value.history,
+        } as StoredSession;
+        if (
+          !Number.isFinite(saved.chat.createdAt) ||
+          saved.chat.createdAt! <= 0
+        ) {
+          const journalAt = Array.isArray(saved.chat.journal)
+            ? saved.chat.journal
+                .map((event) => Date.parse(event?.at ?? ""))
+                .find((at) => Number.isFinite(at) && at > 0)
+            : undefined;
+          saved.chat.createdAt = journalAt ?? info.mtimeMs;
+          // Freeze the migration value so the next atomic save cannot reorder it.
+          await this.save(saved).catch(() => {});
+        }
+        sessions.push(saved);
       } catch {
         /* An interrupted or corrupt file cannot authorize execution. */
       }

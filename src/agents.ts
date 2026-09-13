@@ -53,7 +53,9 @@ export function blankAgent() {
 }
 export function newestFirst(agents: Agent[]) {
   return [...agents].sort(
-    (a, b) => (b.live.createdAt ?? 0) - (a.live.createdAt ?? 0),
+    (a, b) =>
+      (b.live.createdAt ?? 0) - (a.live.createdAt ?? 0) ||
+      a.id.localeCompare(b.id),
   );
 }
 export function phaseLabel(phase: Phase) {

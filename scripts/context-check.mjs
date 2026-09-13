@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -69,6 +69,39 @@ try {
     },
     error: null,
   };
+  const legacyDirectory = join(directory, "legacy");
+  const legacyStore = new WorkspaceStore(legacyDirectory);
+  for (const [id, time] of [
+    ["z_older", 1600000000],
+    ["b_newer", 1700000000],
+    ["a_same_time", 1700000000],
+  ]) {
+    await legacyStore.save({
+      chat: { ...chat, id, createdAt: 0 },
+      history: [],
+    });
+    await utimes(join(legacyDirectory, `${id}.json`), time, time);
+  }
+  const legacy = new AgentRuntime({
+    client: null,
+    browser: {},
+    directory: "/unused",
+    storageDirectory: legacyDirectory,
+    publish: () => {},
+  });
+  await legacy.ready;
+  assert.deepEqual(
+    legacy.list().map((chat) => chat.id),
+    ["a_same_time", "b_newer", "z_older"],
+  );
+  assert.equal(legacy.list()[0].createdAt, 1700000000000);
+  const migration = await legacyStore.load();
+  assert.equal(
+    migration.find((item) => item.chat.id === "b_newer").chat.createdAt,
+    1700000000000,
+  );
+  legacy.close();
+  await rm(legacyDirectory, { recursive: true });
   await store.save({ chat, history });
   const runtime = new AgentRuntime({
     client: null,

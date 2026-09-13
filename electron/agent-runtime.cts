@@ -130,7 +130,10 @@ export class AgentRuntime {
     return structuredClone(
       [...this.sessions.values()]
         .map((item) => item.chat)
-        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+        .sort(
+          (a, b) =>
+            (b.createdAt ?? 0) - (a.createdAt ?? 0) || a.id.localeCompare(b.id),
+        ),
     );
   }
   private publish(session: Session) {
