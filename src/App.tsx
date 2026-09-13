@@ -37,6 +37,7 @@ export function App() {
   const [view, setView] = useState<(typeof workspaceViews)[number]>("chat");
   const [ready, setReady] = useState(false);
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [fallback] = useState(blankAgent);
   const [model, setModel] = useState("gpt-5.6-terra");
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -126,13 +127,14 @@ export function App() {
     setSelectedId(id);
   }
   async function newAgent() {
+    setCreateError(null);
     const next = blankAgent();
     if (window.awlAgent) {
       const result: { chat?: AgentChat; error?: string } = await window.awlAgent
         .create(next.id)
         .catch(() => ({ error: "Could not create a chat." }));
       if (!result.chat) {
-        setStartupError(result.error ?? "Could not create a chat.");
+        setCreateError(result.error ?? "Could not create a chat.");
         return;
       }
       setAgents((current) => [...current, fromChat(result.chat!)]);
@@ -328,6 +330,11 @@ export function App() {
             <Plus size={17} />
             <span>New agent</span>
           </button>
+          {createError && (
+            <p className="create-agent-error" role="alert">
+              {createError}
+            </p>
+          )}
           <button
             className="search-trigger"
             onClick={() => setSearchOpen(!searchOpen)}

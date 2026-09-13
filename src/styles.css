@@ -897,3 +897,10 @@ strong {
 .stop-agent-button:disabled {
   opacity: 0.6;
 }
+
+.create-agent-error {
+  margin: 8px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}

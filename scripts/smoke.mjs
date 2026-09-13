@@ -293,6 +293,46 @@ try {
     ),
     true,
   );
+  // Hitting the real runtime limit must not lock existing conversations.
+  await page.evaluate(async () => {
+    const { chats } = await window.awlAgent.state();
+    for (let index = chats.length; index < 32; index++) {
+      const result = await window.awlAgent.create(`limit-${index}`);
+      if (!result.chat) throw new Error(result.error);
+    }
+  });
+  await draft.fill("This existing chat still works");
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page
+    .locator(".create-agent-error")
+    .filter({ hasText: "chat limit" })
+    .waitFor();
+  assert.equal(
+    await page.evaluate(() => sessionStorage.getItem("awl-selected-chat")),
+    selected,
+  );
+  assert.equal(await draft.inputValue(), "This existing chat still works");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .isEnabled(),
+    true,
+  );
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await page
+    .locator(".live-agent-error")
+    .filter({ hasText: "AI is disabled" })
+    .waitFor();
+  // A second failure and selecting another chat still leave its composer enabled.
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.locator(".agent-item").first().click();
+  await draft.fill("Another existing chat");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Send message", exact: true })
+      .isEnabled(),
+    true,
+  );
   assert.deepEqual(errors, []);
   console.log(
     "Passed: clean startup, no demo UI, live events, rejected-send draft preservation, navigation, resize/collapse, search, session reload, compact layout.",
