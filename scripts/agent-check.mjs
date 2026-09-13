@@ -271,7 +271,9 @@ try {
   const settingsRuntime = new AgentRuntime(options);
   await settingsRuntime.ready;
   assert.deepEqual(settingsRuntime.send("settings", "Inspect this page"), {});
+  assert.equal(settingsRuntime.policyBusy(), true);
   await finished(settingsRuntime);
+  assert.equal(settingsRuntime.policyBusy(), false);
   assert.equal(requests[0].model, TERRA_MODEL);
   assert.ok(
     settingsRuntime.configure("settings", { model: "", access: "configured" })

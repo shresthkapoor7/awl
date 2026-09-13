@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { PolicyEditor } from "./PolicyEditor";
 import { ChevronDown, Cpu, LockKeyhole, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { SessionSettings } from "../../shared/session-settings";
@@ -18,6 +20,7 @@ export function ChatSettings({
     model: defaultModel,
     access: "configured" as const,
   };
+  const [editor, setEditor] = useState<HTMLElement | null>(null);
   const [model, setModel] = useState(settings.model);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,12 +200,40 @@ export function ChatSettings({
               <span>{option.description}</span>
             </button>
           ))}
+          <button
+            type="button"
+            className="manage-access"
+            disabled={saving}
+            onClick={() => {
+              const host =
+                container.current?.closest<HTMLElement>(".conversation");
+              if (!host) return;
+              setEditor(host);
+              onSaving(true);
+              if (accessMenu.current) accessMenu.current.open = false;
+            }}
+          >
+            Manage access…
+          </button>
           <p>
             Applies to automation in this chat. You stay in control of manual
             browsing.
           </p>
         </div>
       </details>
+      {editor &&
+        createPortal(
+          <PolicyEditor
+            onClose={() => {
+              setEditor(null);
+              onSaving(false);
+              requestAnimationFrame(() =>
+                accessMenu.current?.querySelector("summary")?.focus(),
+              );
+            }}
+          />,
+          editor,
+        )}
       {error && (
         <div className="settings-error" role="alert">
           {error}

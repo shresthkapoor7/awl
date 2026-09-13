@@ -5,6 +5,9 @@ import type { PendingQuestion } from "../../shared/agent.js";
 import type { BrowserState } from "../../shared/browser.js";
 
 export interface BrowserAccess {
+  updatePolicy?: (
+    config: import("../../shared/policy.js").PolicyConfig,
+  ) => void;
   setAccess?: (id: string, access: "configured" | "read_only") => void;
   start(
     agentId: string,

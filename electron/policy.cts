@@ -1,34 +1,8 @@
-import { z } from "zod";
+import { policySchema, type PolicyConfig } from "../shared/policy.js";
+export { policySchema, type PolicyConfig } from "../shared/policy.js";
 import { readFileSync } from "node:fs";
 import type { WebContents } from "electron";
 import { ToolError } from "./tools/core.cjs";
-const actions = z.enum([
-  "navigate",
-  "click",
-  "fill",
-  "select",
-  "press",
-  "scroll",
-]);
-const destination = z.strictObject({
-  origin: z.string().url(),
-  paths: z.array(z.string().startsWith("/")).min(1),
-});
-export const policySchema = z.strictObject({
-  destinations: z.array(destination),
-  actions: z.array(actions),
-  safeControls: z.array(
-    z.strictObject({
-      origin: z.string().url(),
-      path: z.string().startsWith("/"),
-      selector: z.string().min(1).max(500),
-      actions: z.array(actions),
-    }),
-  ),
-  sensitiveSelectors: z.array(z.string().min(1).max(500)).default([]),
-  blockedControls: z.array(z.string().min(1).max(500)),
-});
-export type PolicyConfig = z.infer<typeof policySchema>;
 export type ActionFacts = {
   url: string;
   tag: string;
@@ -78,7 +52,7 @@ export class BrowserPolicy {
     if (!this.destination(url))
       throw new ToolError(
         "POLICY_DENIED",
-        "This destination is outside the configured browser policy. A human can update AWL_POLICY_FILE.",
+        "This destination is outside the configured browser policy. Open Manage access in the composer to change the allowed websites.",
       );
   }
   assertType(action: string) {

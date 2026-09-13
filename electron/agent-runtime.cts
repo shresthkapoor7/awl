@@ -208,6 +208,18 @@ export class AgentRuntime {
     }
     return structuredClone(session.chat);
   }
+  policyBusy() {
+    return (
+      this.recordingRequests.size > 0 ||
+      this.repairing.size > 0 ||
+      this.launchingCapabilities.size > 0 ||
+      [...this.sessions.values()].some(
+        (session) =>
+          session.controller ||
+          session.chat.demonstration?.mode === "recording",
+      )
+    );
+  }
   configure(id: string, raw: unknown): { error?: string } {
     const session = this.sessions.get(id);
     if (!session || this.deleting.has(id) || this.deleted.has(id))

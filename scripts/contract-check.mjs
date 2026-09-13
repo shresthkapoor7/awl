@@ -130,3 +130,56 @@ assert.throws(
 );
 policy.assertAction("click", null, { ...facts, allowed: true });
 console.log("Read-only browser policy preserves configured restrictions");
+
+const { PolicyStore } = require("../dist-electron/electron/policy-store.cjs");
+const { mkdtempSync, readFileSync, writeFileSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
+const policyDirectory = mkdtempSync(join(tmpdir(), "awl-policy-"));
+try {
+  const file = join(policyDirectory, "policy.json");
+  const store = new PolicyStore(file);
+  const initial = store.read();
+  assert.deepEqual(initial.config.destinations, []);
+  const saved = store.save(policy.config, initial.revision);
+  assert.deepEqual(new PolicyStore(file).read().config, policy.config);
+  assert.deepEqual(new PolicyStore(file, true).read().config, policy.config);
+  const persisted = readFileSync(file, "utf8");
+  assert.throws(() =>
+    store.save(
+      {
+        ...policy.config,
+        destinations: [{ origin: "https://example.com/work", paths: ["/*"] }],
+      },
+      saved.revision,
+    ),
+  );
+  assert.throws(() =>
+    store.save(
+      {
+        ...policy.config,
+        destinations: [{ origin: "https://example.com", paths: ["/work*"] }],
+      },
+      saved.revision,
+    ),
+  );
+  assert.equal(
+    readFileSync(file, "utf8"),
+    persisted,
+    "validation failure leaves the last good policy untouched",
+  );
+  assert.throws(() => store.save(policy.config, initial.revision), /changed/);
+  writeFileSync(file, JSON.stringify({ ...policy.config, actions: [] }));
+  assert.throws(() => store.save(policy.config, saved.revision), /changed/);
+  const reloaded = store.read();
+  assert.deepEqual(reloaded.config.actions, []);
+  assert.deepEqual(
+    store.save(policy.config, reloaded.revision).config,
+    policy.config,
+  );
+} finally {
+  rmSync(policyDirectory, { recursive: true, force: true });
+}
+console.log(
+  "Policy persistence, validation, and stale-editor conflict checks passed",
+);

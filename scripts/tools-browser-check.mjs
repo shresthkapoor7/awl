@@ -450,6 +450,43 @@ try {
     globalThis.awlToolsTest.browser.setAccess("test", "configured"),
   );
   assert.equal((await fieldAction("Search", "fill", "allowed again")).ok, true);
+  const updatedPolicy = {
+    destinations: [{ origin: base, paths: ["/*"] }],
+    actions: ["navigate", "click", "fill", "select", "press", "scroll"],
+    safeControls: [],
+    blockedControls: [],
+    sensitiveSelectors: [],
+  };
+  await app.evaluate((_, config) => {
+    const browser = globalThis.awlToolsTest.browser;
+    browser.setAccess("test", "read_only");
+    browser.updatePolicy(config);
+  }, updatedPolicy);
+  assert.equal(
+    (await fieldAction("Search", "fill", "blocked after update")).error.code,
+    "POLICY_DENIED",
+    "live updates preserve read-only overrides",
+  );
+  await app.evaluate(() =>
+    globalThis.awlToolsTest.browser.setAccess("test", "configured"),
+  );
+  assert.equal(
+    (await fieldAction("Search", "fill", "configured after update")).ok,
+    true,
+  );
+  await app.evaluate(
+    (_, config) =>
+      globalThis.awlToolsTest.browser.updatePolicy({
+        ...config,
+        actions: ["navigate"],
+      }),
+    updatedPolicy,
+  );
+  assert.equal(
+    (await fieldAction("Search", "fill", "blocked by new rules")).error.code,
+    "POLICY_DENIED",
+    "open tabs use the updated policy",
+  );
   assert.equal(
     await app.evaluate(() => globalThis.nativeInterruptions),
     0,

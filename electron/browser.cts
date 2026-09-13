@@ -15,7 +15,7 @@ import {
   attachPolicy,
   loadPolicy,
   readOnlyPolicy,
-  type BrowserPolicy,
+  BrowserPolicy,
 } from "./policy.cjs";
 import { installWorkspaceShortcuts } from "./workspace-shortcuts.cjs";
 import { automationInput } from "./tools/page.cjs";
@@ -837,6 +837,13 @@ export function installBrowser(
   return {
     onHumanInput: (handler) => {
       humanInput = handler;
+    },
+    updatePolicy: (config) => {
+      policy = new BrowserPolicy(config);
+      for (const id of access.keys()) access.set(id, readOnlyPolicy(policy));
+      for (const browser of browsers.values())
+        for (const tab of browser.tabs)
+          attachPolicy(tab.view.webContents, sessionPolicy(browser.id));
     },
     setAccess: (id, value) => {
       if (deleted.has(id)) return;

@@ -69,6 +69,11 @@ export type SavedCapability = {
   contract: string;
 };
 export type AgentBridge = {
+  policy: () => Promise<import("./policy.js").PolicyResult>;
+  savePolicy: (
+    config: import("./policy.js").PolicyConfig,
+    revision: string,
+  ) => Promise<import("./policy.js").PolicyResult>;
   configure: (
     id: string,
     settings: SessionSettings,
