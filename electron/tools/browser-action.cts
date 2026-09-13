@@ -47,7 +47,7 @@ export const browserAction = defineTool(
     const prepared = await inPage(
       wc,
       args.frame_id,
-      (args) => {
+      async (args) => {
         const holder = globalThis as typeof globalThis & {
           __awlSnapshot?: PageSnapshot;
         };
@@ -109,6 +109,30 @@ export const browserAction = defineTool(
         if (args.action === "select" && !(el instanceof HTMLSelectElement))
           return { error: "NOT_SELECT" };
         el.focus();
+        if (args.action === "click") {
+          // Layout can be ready before Chromium has submitted its hit-test regions.
+          // Wait for stable painted frames before dispatching a single native click.
+          const before = el.getBoundingClientRect();
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+          const after = el.getBoundingClientRect();
+          if (
+            !el.isConnected ||
+            Math.abs(before.x - after.x) > 0.5 ||
+            Math.abs(before.y - after.y) > 0.5 ||
+            Math.abs(before.width - after.width) > 0.5 ||
+            Math.abs(before.height - after.height) > 0.5
+          )
+            return { error: "MOVING_ELEMENT" };
+          const root = el.getRootNode() as Document | ShadowRoot;
+          const hit = root.elementFromPoint(
+            after.x + after.width / 2,
+            after.y + after.height / 2,
+          );
+          if (!hit || (hit !== el && !el.contains(hit)))
+            return { error: "OBSCURED_ELEMENT" };
+        }
         return { error: null };
       },
       args,

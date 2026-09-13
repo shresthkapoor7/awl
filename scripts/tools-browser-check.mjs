@@ -29,6 +29,12 @@ const server = createServer((req, res) => {
     res.end(fixture);
     return;
   }
+  if (req.url === "/covered") {
+    res.end(
+      '<button style="position:absolute;left:20px;top:20px;width:100px;height:40px">Covered</button><div style="position:absolute;left:20px;top:20px;width:100px;height:40px;z-index:2">Overlay</div>',
+    );
+    return;
+  }
   if (req.url === "/targets") {
     res.end(
       `<input placeholder="Search a paper"><button>Search</button><button>Duplicate</button><button>Duplicate</button><div id="host"></div><script>document.querySelector("#host").attachShadow({mode:"open"}).innerHTML='<input placeholder="Shadow search">';</script>`,
@@ -352,6 +358,20 @@ try {
     (await resolve(searchTarget)).snapshot_id,
     "semantic target survives reload",
   );
+  await call("browser-start", "browserStart", {
+    url: `${base}/covered`,
+    tab_id: tabId,
+  });
+  const covered = await inspect();
+  const coveredClick = await call("browser-action", "browserAction", {
+    tab_id: tabId,
+    frame_id: covered.data.frame_id,
+    snapshot_id: covered.data.snapshot_id,
+    ref: covered.data.elements.find((el) => el.name === "Covered").ref,
+    action: "click",
+    value: null,
+  });
+  assert.equal(coveredClick.error.code, "OBSCURED_ELEMENT");
   assert.equal(
     await app.evaluate(() => globalThis.nativeInterruptions),
     0,
