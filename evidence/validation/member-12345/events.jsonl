@@ -1,0 +1,28 @@
+{"sequence":1,"at":"2026-09-14T15:28:05.978Z","actor":"runtime","kind":"execution","label":"Step 1: running"}
+{"sequence":2,"at":"2026-09-14T15:28:05.978Z","actor":"runtime","kind":"step","label":"Step 1: navigate; expected http://127.0.0.1:7311/terminal.asp"}
+{"sequence":3,"at":"2026-09-14T15:28:06.511Z","actor":"runtime","kind":"execution","label":"Step 2: running"}
+{"sequence":4,"at":"2026-09-14T15:28:06.511Z","actor":"runtime","kind":"step","label":"Step 2: click; expected 10 Member inquiry"}
+{"sequence":5,"at":"2026-09-14T15:28:06.516Z","actor":"runtime","kind":"failure","label":"SENSITIVE_PAGE: SENSITIVE_PAGE: Authentication or payment fields are visible. Stop observation and ask the user to complete them in the browser.","evidence":{"kind":"dom_structure","capturedAt":"2026-09-14T15:28:06.515Z","frames":[{"index":0,"status":"private","controls":[]}]}}
+{"sequence":6,"at":"2026-09-14T15:28:06.517Z","actor":"runtime","kind":"execution","label":"Step 2: paused"}
+{"sequence":7,"at":"2026-09-14T15:28:06.518Z","actor":"runtime","kind":"handoff","label":"authentication"}
+{"sequence":8,"at":"2026-09-14T15:28:45.316Z","actor":"human","kind":"resume","label":"authentication: Authentication completed privately"}
+{"sequence":9,"at":"2026-09-14T15:28:45.316Z","actor":"runtime","kind":"execution","label":"Step 2: running"}
+{"sequence":10,"at":"2026-09-14T15:28:45.317Z","actor":"runtime","kind":"step","label":"Step 2: click; expected 10 Member inquiry"}
+{"sequence":11,"at":"2026-09-14T15:28:45.344Z","actor":"runtime","kind":"execution","label":"Step 3: running"}
+{"sequence":12,"at":"2026-09-14T15:28:45.345Z","actor":"runtime","kind":"step","label":"Step 3: fill; expected input[name=\"f01\"]"}
+{"sequence":13,"at":"2026-09-14T15:28:45.512Z","actor":"runtime","kind":"execution","label":"Step 4: running"}
+{"sequence":14,"at":"2026-09-14T15:28:45.513Z","actor":"runtime","kind":"step","label":"Step 4: click; expected Transmit"}
+{"sequence":15,"at":"2026-09-14T15:28:45.555Z","actor":"runtime","kind":"execution","label":"Step 5: running"}
+{"sequence":16,"at":"2026-09-14T15:28:45.555Z","actor":"runtime","kind":"step","label":"Step 5: click; expected input[name=\"row\"]"}
+{"sequence":17,"at":"2026-09-14T15:28:45.720Z","actor":"runtime","kind":"execution","label":"Step 6: running"}
+{"sequence":18,"at":"2026-09-14T15:28:45.720Z","actor":"runtime","kind":"step","label":"Step 6: click; expected Process selected record >"}
+{"sequence":19,"at":"2026-09-14T15:28:45.754Z","actor":"runtime","kind":"execution","label":"Step 7: running"}
+{"sequence":20,"at":"2026-09-14T15:28:45.754Z","actor":"runtime","kind":"step","label":"Step 7: click; expected 01 Share register"}
+{"sequence":21,"at":"2026-09-14T15:28:45.939Z","actor":"runtime","kind":"execution","label":"Step 8: running"}
+{"sequence":22,"at":"2026-09-14T15:28:45.939Z","actor":"runtime","kind":"step","label":"Step 8: extract_text; expected body"}
+{"sequence":23,"at":"2026-09-14T15:28:45.944Z","actor":"runtime","kind":"execution","label":"Step 9: running"}
+{"sequence":24,"at":"2026-09-14T15:28:45.945Z","actor":"runtime","kind":"step","label":"Step 9: extract_text; expected body"}
+{"sequence":25,"at":"2026-09-14T15:28:46.107Z","actor":"runtime","kind":"execution","label":"Step 10: running"}
+{"sequence":26,"at":"2026-09-14T15:28:46.108Z","actor":"runtime","kind":"step","label":"Step 10: assert_text; expected {{account_number}}"}
+{"sequence":27,"at":"2026-09-14T15:28:46.111Z","actor":"runtime","kind":"execution","label":"Step 11: running"}
+{"sequence":28,"at":"2026-09-14T15:28:46.118Z","actor":"runtime","kind":"execution","label":"Step 11: completed"}

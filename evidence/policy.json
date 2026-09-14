@@ -1,0 +1,46 @@
+{
+  "destinations": [
+    {
+      "origin": "http://127.0.0.1:7311",
+      "paths": [
+        "/*"
+      ]
+    }
+  ],
+  "actions": [
+    "navigate",
+    "click",
+    "fill",
+    "select",
+    "press",
+    "scroll"
+  ],
+  "safeControls": [
+    {
+      "origin": "http://127.0.0.1:7311",
+      "path": "/screen.asp",
+      "selector": "form:has(input[name=\"screen\"][value=\"M100\"]) button, form:has(input[name=\"screen\"][value=\"S310\"]) button",
+      "actions": [
+        "click",
+        "press"
+      ]
+    },
+    {
+      "origin": "http://127.0.0.1:7311",
+      "path": "/accounts.asp",
+      "selector": "button",
+      "actions": [
+        "click",
+        "press"
+      ]
+    }
+  ],
+  "blockedControls": [
+    "form[action*=\"signoff\"] button",
+    "form[action*=\"authorize\"] button",
+    "button[name=\"cmd\"][value=\"post\"]"
+  ],
+  "sensitiveSelectors": [
+    ".summary table:nth-child(2) td:nth-child(2)"
+  ]
+}

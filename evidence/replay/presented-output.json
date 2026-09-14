@@ -1,0 +1,14 @@
+{
+  "provenance": {
+    "kind": "derived_from_persisted_presentation",
+    "source": "messages.json",
+    "message_id": "e7ebb1f2-e389-4c92-a946-a0632c852c81",
+    "method": "Split the persisted Capability message at its literal output labels. This is not an unredacted executor-state dump."
+  },
+  "summary": "Finished Read checking balance. Final checkpoint passed.",
+  "outputs": {
+    "account_row": "SHARE REGISTER\nS100 / 12349\nSel.\tAccount\tClass\tDescription\tCondition\tAvailable USD\n\t12349-00\tCHK\tShare draft\tOPEN\t2.50\nRetrieve history\nMERIDIAN CU · TRAINING PARTITION 003 · ALL MEMBER RECORDS AND FUNDS ARE FICTIONAL",
+    "available_usd": "SHARE REGISTER\nS100 / 12349\nSel.\tAccount\tClass\tDescription\tCondition\tAvailable USD\n\t12349-00\tCHK\tShare draft\tOPEN\t2.50\nRetrieve history\nMERIDIAN CU · TRAINING PARTITION 003 · ALL MEMBER RECORDS AND FUNDS ARE FICTIONAL"
+  },
+  "limitation": "Both fields contain the full Share register text; available_usd is not a scalar currency extraction."
+}

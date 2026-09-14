@@ -1,0 +1,12 @@
+{
+  "provenance": "Unmodified persisted execution.result for the failed replay. The observed detail was replaced by the application during persistence, not during this export.",
+  "result": {
+    "kind": "failure",
+    "code": "TARGET_MISSING",
+    "message": "TARGET_MISSING: The target must match exactly one visible element. Timed out waiting for step 10.",
+    "step": 9,
+    "expected": "assert_text: {{account_number}}",
+    "observed": "Observation retained in memory only.",
+    "uncertain": false
+  }
+}

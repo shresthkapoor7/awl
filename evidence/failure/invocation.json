@@ -1,0 +1,13 @@
+{
+  "capability": {
+    "id": "read_checking_balance",
+    "sourceChatId": "6b1041b0-38ee-418a-a692-d8113325c820",
+    "version": 1
+  },
+  "inputs": {
+    "member_number": "12345",
+    "account_number": "12345-99"
+  },
+  "provenance": "Transcribed from screenshots/failure-inputs.png, a frame of the original native-window recording; also identified in repair/session.json pending.question.",
+  "data_classification": "Synthetic training identifiers. These values were not restored into the redacted session export."
+}

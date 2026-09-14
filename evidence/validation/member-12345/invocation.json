@@ -1,0 +1,13 @@
+{
+  "capability": {
+    "id": "read_checking_balance",
+    "sourceChatId": "6b1041b0-38ee-418a-a692-d8113325c820",
+    "version": 1
+  },
+  "inputs": {
+    "member_number": "12345",
+    "account_number": "12345-00"
+  },
+  "provenance": "Known synthetic demonstration input set, corroborated by its SHA-256 input fingerprint in capability/v1.validation.json and its persisted result presentation. The stored input fields remain redacted.",
+  "data_classification": "Synthetic training identifiers. These values were not restored into the redacted session export."
+}

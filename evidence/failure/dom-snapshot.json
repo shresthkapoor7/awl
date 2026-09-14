@@ -1,0 +1,99 @@
+{
+  "kind": "dom_structure",
+  "capturedAt": "2026-09-14T15:33:03.106Z",
+  "frames": [
+    {
+      "index": 0,
+      "status": "observed",
+      "controls": [
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "button"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "button"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "status": "observed",
+      "controls": [
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "a"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "status": "observed",
+      "controls": [
+        {
+          "checked": false,
+          "disabled": false,
+          "tag": "input"
+        },
+        {
+          "checked": null,
+          "disabled": false,
+          "tag": "button"
+        }
+      ]
+    }
+  ]
+}

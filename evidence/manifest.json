@@ -1,0 +1,150 @@
+{
+  "format_version": 1,
+  "collected_at": "2026-09-14T16:09:56.320191+00:00",
+  "recorded_on": "2026-09-14",
+  "clock": "Runtime timestamps are UTC; screenshot offsets are local media positions.",
+  "source_revision_at_packaging": "1f99d4d02e5193c8ff5ceb7314bd470428a8b94e",
+  "revision_note": "The app source was not modified during the recorded demo. The worktree contains documentation and packaging changes; the revision alone does not describe those uncommitted files. Checksums establish export integrity, not an independent timestamp or signature.",
+  "target": {
+    "origin": "http://127.0.0.1:7311",
+    "source": "../dummy/",
+    "fixture": "Fresh isolated synthetic instance. Working database and authentication state are not exported."
+  },
+  "discovery": {
+    "session_id": "6b1041b0-38ee-418a-a692-d8113325c820",
+    "model": "gpt-5.6-terra",
+    "provider": "OpenAI official SDK, Responses API",
+    "goal_completed_event": 20,
+    "artifact_saved_event": 25,
+    "all_logged_tool_calls": 23,
+    "source": "discovery/events.jsonl"
+  },
+  "replay": {
+    "session_id": "run-2a03d153-d23a-4949-bade-0d1d1f0bc9dc",
+    "mode": "execution",
+    "status": "completed",
+    "logged_model_tool_calls": 0,
+    "model_calls_note": "No model tool activity is present. Deterministic execution uses Execution in electron/executor.cts and does not call a model. This export does not include an independent network trace.",
+    "source": "replay/events.jsonl"
+  },
+  "failure": {
+    "session_id": "run-a7c9f1a5-88fd-40a6-924d-4ef315b18718",
+    "event_range": [
+      1,
+      29
+    ],
+    "result_code": "TARGET_MISSING",
+    "failure_dom_event": 27,
+    "source": "failure/events.jsonl"
+  },
+  "repair": {
+    "session_id": "run-a7c9f1a5-88fd-40a6-924d-4ef315b18718",
+    "event_range": [
+      30,
+      56
+    ],
+    "mode": "repair",
+    "end_state": "waiting",
+    "result": "Human clarification pending; no validated repair claimed.",
+    "source": "repair/events.jsonl"
+  },
+  "video": {
+    "path": "../docs/videos/awl-demo.mp4",
+    "sha256": "3470c20d79bcbe02607715ca37b17dba6881096701529ae28367125455f8abec",
+    "duration_seconds": 248.5,
+    "edited": true,
+    "notes": "Idle periods shortened; one discovery segment labeled 2x; private authentication entry excluded."
+  },
+  "export_method": {
+    "events": "Persisted journal entries serialized as JSONL without changing values, labels, timestamps, sequence numbers, or embedded safe evidence. The failed session is split at the explicit repair boundary.",
+    "sessions": "Only named metadata, messages, tool status, control, pending request and execution fields are exported; raw history and browser profile are not.",
+    "outputs": "Executor outputs are removed by persistence. presented-output.json is explicitly derived from the preserved Capability chat message; the original redacted execution object is retained separately.",
+    "inputs": "Invocations are separately annotated from recorded UI or validation fingerprints; redacted stored inputs are not overwritten.",
+    "artifacts": "Original JSON, generated JavaScript and validation sidecar copied byte for byte; no hand repairs or new successful-run claims.",
+    "privacy": "All exported identifiers and visible records belong to the synthetic portal. Authentication input, cookies, tokens, signing keys, .env, raw model context, and session databases are excluded."
+  },
+  "source_file_digests": [
+    {
+      "kind": "private_persisted_session",
+      "basename": "6b1041b0-38ee-418a-a692-d8113325c820.json",
+      "sha256": "932fabcd5c85dc6ba77ee0b81f179557de8a53c0435e62efd861bcd0d1b909d8",
+      "exported": false
+    },
+    {
+      "kind": "runtime_artifact",
+      "export_path": "capability/v1.json",
+      "sha256": "8ceb53a014ace97c82722776f015cea9ecf73a97fe1bc609cae56a011beed7dd",
+      "byte_identical": true
+    },
+    {
+      "kind": "runtime_artifact",
+      "export_path": "capability/v1.mjs",
+      "sha256": "1a789e75529cc017688904757a167a78a4f997bf69c73610aa868a346f167b7b",
+      "byte_identical": true
+    },
+    {
+      "kind": "runtime_artifact",
+      "export_path": "capability/v1.validation.json",
+      "sha256": "c6c8ee43a1eb8e150329f0e67440d9f07ecb15342f067225e1c62270923e5586",
+      "byte_identical": true
+    },
+    {
+      "kind": "private_persisted_session",
+      "basename": "run-2a03d153-d23a-4949-bade-0d1d1f0bc9dc.json",
+      "sha256": "4f921bb7a076681cff213f2878ef64f4ccb09533462b88a86d7dfed5dbe863c6",
+      "exported": false
+    },
+    {
+      "kind": "private_persisted_session",
+      "basename": "run-a7c9f1a5-88fd-40a6-924d-4ef315b18718.json",
+      "sha256": "c9a9cab3eaf2ae986e7924f9f87292d8274d5ffc5833b2f44e05f3590cc75b48",
+      "exported": false
+    },
+    {
+      "kind": "private_persisted_session",
+      "basename": "run-1947d921-9eae-4896-be78-3efcb28d4a22.json",
+      "sha256": "a7f30deb19c4721556565ac2217b6505c39f444913bba2f1cdfe076f3adb9f6f",
+      "exported": false
+    },
+    {
+      "kind": "private_persisted_session",
+      "basename": "run-a5ba136e-c049-44a4-8988-a01fcc29d3bd.json",
+      "sha256": "8cf9132b91538855b777545a6cbf54239023db65ddb441b5c5dee7df5a76ec31",
+      "exported": false
+    }
+  ],
+  "requirements_map": {
+    "3.1": [
+      "discovery/goal.txt",
+      "discovery/messages.json",
+      "discovery/events.jsonl"
+    ],
+    "3.2": [
+      "capability/v1.json",
+      "capability/v1.mjs"
+    ],
+    "3.3": [
+      "replay/events.jsonl",
+      "replay/presented-output.json",
+      "failure/result.json"
+    ],
+    "3.4": [
+      "policy.json",
+      "discovery/events.jsonl",
+      "repair/events.jsonl"
+    ],
+    "3.5": [
+      "failure/dom-snapshot.json",
+      "screenshots/failure.png"
+    ],
+    "3.6": [
+      "discovery/events.jsonl",
+      "repair/session.json"
+    ],
+    "6.3": [
+      "capability/v1.json",
+      "discovery/events.jsonl",
+      "replay/events.jsonl"
+    ]
+  }
+}
