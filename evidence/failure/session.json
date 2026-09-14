@@ -1,0 +1,33 @@
+{
+  "export_format": 1,
+  "provenance": "Selected fields of the final persisted session, not raw model API history. Execution inputs/outputs retain the runtime storage redactions. See manifest.json.",
+  "persisted": {
+    "id": "run-a7c9f1a5-88fd-40a6-924d-4ef315b18718",
+    "createdAt": 1789399962090,
+    "execution": {
+      "id": "read_checking_balance",
+      "sourceChatId": "6b1041b0-38ee-418a-a692-d8113325c820",
+      "version": 1,
+      "step": 9,
+      "total": 10,
+      "status": "paused",
+      "validation": false,
+      "inputs": {
+        "member_number": "[private]",
+        "account_number": "[private]"
+      },
+      "outputs": {},
+      "error": "TARGET_MISSING: The target must match exactly one visible element. Timed out waiting for step 10.",
+      "uncertain": false,
+      "result": {
+        "kind": "failure",
+        "code": "TARGET_MISSING",
+        "message": "TARGET_MISSING: The target must match exactly one visible element. Timed out waiting for step 10.",
+        "step": 9,
+        "expected": "assert_text: {{account_number}}",
+        "observed": "Observation retained in memory only.",
+        "uncertain": false
+      }
+    }
+  }
+}

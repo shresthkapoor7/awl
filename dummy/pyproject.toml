@@ -1,0 +1,13 @@
+[project]
+name = "meridian-member-services"
+version = "0.1.0"
+description = "A deliberately awkward local credit-union servicing portal"
+requires-python = ">=3.12"
+dependencies = ["Flask>=3.1,<4", "waitress>=3,<4"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "playwright>=1.50,<2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

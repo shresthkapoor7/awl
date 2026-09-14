@@ -1,0 +1,142 @@
+{
+  "export_format": 1,
+  "provenance": "Selected fields of the final persisted session, not raw model API history. Execution inputs/outputs retain the runtime storage redactions. See manifest.json.",
+  "persisted": {
+    "id": "6b1041b0-38ee-418a-a692-d8113325c820",
+    "createdAt": 1789398821332,
+    "name": "Look up checking balance",
+    "settings": {
+      "model": "gpt-5.6-terra",
+      "access": "configured"
+    },
+    "status": "idle",
+    "control": {
+      "owner": "human",
+      "capture": "observe",
+      "generation": 4
+    },
+    "pending": null,
+    "error": null,
+    "tools": [
+      {
+        "id": "call_krlZCRuBNPgybY1OJH2V6Tvb",
+        "name": "chat_set_name",
+        "state": "done"
+      },
+      {
+        "id": "call_Suzd19GZQ2fCXQIQYpsa34BV",
+        "name": "browser_start",
+        "state": "done"
+      },
+      {
+        "id": "call_4yTdJzSAEqJiJsJmjlZ50WwO",
+        "name": "browser_dom",
+        "state": "error",
+        "detail": "SENSITIVE_PAGE"
+      },
+      {
+        "id": "call_30QtVfuJT1K0EH4c8Xu8s2TP",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_6Y8Z1DoBnRWVEJduFa5536kz",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_b8LGkSu0P8Un5LJr1QBSXCz8",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_gl2xp5RQoiwgICLIn4dFNsK6",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_frEYEuzCJfTwQLLBZztfRSFU",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_XLbCLp89i33Y5lqu2IvGE2C5",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_WchKuP7VmD8BuODgKlquZQXJ",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_chkK4Yu1cfSrGVsz8vnzieIt",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_B5RysaKYfZjRc65ItKNwYElt",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_JZos5uplHWzHnxV5cTJiNldo",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_w8liGxc0kEbTuROkOAbsRRe8",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_HUrUl9qrjlby8NDNzp7nSX1w",
+        "name": "browser_action",
+        "state": "done"
+      },
+      {
+        "id": "call_VJyEjIRpyQEO0LvgHJKlopQj",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_PXEwW4ZYXPoAyaF1cOBs3JUV",
+        "name": "browser_dom",
+        "state": "done"
+      },
+      {
+        "id": "call_cTI7xGK0YAxit4Bcgw8tRgqo",
+        "name": "task_complete",
+        "state": "done"
+      },
+      {
+        "id": "call_4sTtqcVnPaPJNpCwUUhDsITC",
+        "name": "capability_read",
+        "state": "done"
+      },
+      {
+        "id": "call_lEePIj3n4LtxbVpqNxu8zQcq",
+        "name": "capability_write",
+        "state": "error",
+        "detail": "INVALID_CAPABILITY"
+      },
+      {
+        "id": "call_4c7n60s2KoIE1Aj0VWhyqoya",
+        "name": "capability_write",
+        "state": "error",
+        "detail": "INVALID_CAPABILITY"
+      },
+      {
+        "id": "call_3WwZKbwBGLO0q1vvIZ2TpyXD",
+        "name": "capability_write",
+        "state": "error",
+        "detail": "INVALID_CAPABILITY"
+      },
+      {
+        "id": "call_wYhJXYP3jl1LNVWO3xMe9ZV1",
+        "name": "capability_write",
+        "state": "done"
+      }
+    ]
+  }
+}

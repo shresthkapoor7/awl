@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+instance/
+.env
+.env.*
+*.sqlite*
+test-results/
+.DS_Store
+AGENTS.md
+architecture.md
+the_assignment.pdf
+fixtures/
+dist/

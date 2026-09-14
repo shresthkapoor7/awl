@@ -1,0 +1,13 @@
+[
+  {
+    "id": "886c2612-f8d6-4360-a6b9-6a1df83076ee",
+    "role": "user",
+    "text": "Validate Read checking balance · v1"
+  },
+  {
+    "id": "78ca7d9a-acec-46de-a567-06933bb5b6d5",
+    "role": "assistant",
+    "model": "Capability",
+    "text": "Finished Read checking balance. Final checkpoint passed.\n\naccount_row: SHARE REGISTER\nS100 / 12348\nSel.\tAccount\tClass\tDescription\tCondition\tAvailable USD\n\t12348-00\tCHK\tShare draft\tOPEN\t2,501.75\nRetrieve history\nMERIDIAN CU · TRAINING PARTITION 003 · ALL MEMBER RECORDS AND FUNDS ARE FICTIONAL\navailable_usd: SHARE REGISTER\nS100 / 12348\nSel.\tAccount\tClass\tDescription\tCondition\tAvailable USD\n\t12348-00\tCHK\tShare draft\tOPEN\t2,501.75\nRetrieve history\nMERIDIAN CU · TRAINING PARTITION 003 · ALL MEMBER RECORDS AND FUNDS ARE FICTIONAL"
+  }
+]

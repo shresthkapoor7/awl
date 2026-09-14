@@ -1,0 +1,56 @@
+[
+  {
+    "file": "screenshots/discovery-result.png",
+    "source": "docs/videos/awl-demo.mp4",
+    "source_in_repository": true,
+    "source_sha256": "3470c20d79bcbe02607715ca37b17dba6881096701529ae28367125455f8abec",
+    "offset_seconds": 58,
+    "transformation": "Frame export only; existing video captions retained.",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  },
+  {
+    "file": "screenshots/replay-inputs.png",
+    "source": "11-validation-confirmed.mov",
+    "source_in_repository": false,
+    "source_sha256": "09f77ef660ae95178d89bbf6c8c994748ab84bfc6d2d05aaf1b635362bb56b46",
+    "offset_seconds": 39,
+    "transformation": "crop=2800:1658:112:76,scale=1920:-2",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  },
+  {
+    "file": "screenshots/replay-result.png",
+    "source": "docs/videos/awl-demo.mp4",
+    "source_in_repository": true,
+    "source_sha256": "3470c20d79bcbe02607715ca37b17dba6881096701529ae28367125455f8abec",
+    "offset_seconds": 124,
+    "transformation": "Frame export only; existing video captions retained.",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  },
+  {
+    "file": "screenshots/failure-inputs.png",
+    "source": "14-recorded-draft-and-unknown.mov",
+    "source_in_repository": false,
+    "source_sha256": "d5306af3831aec5a69924f31205d8c1ad36d5ba9126cf705c27f702ffa25feca",
+    "offset_seconds": 6.5,
+    "transformation": "crop=2800:1658:112:76,scale=1920:-2",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  },
+  {
+    "file": "screenshots/failure.png",
+    "source": "docs/videos/awl-demo.mp4",
+    "source_in_repository": true,
+    "source_sha256": "3470c20d79bcbe02607715ca37b17dba6881096701529ae28367125455f8abec",
+    "offset_seconds": 210,
+    "transformation": "Frame export only; existing video captions retained.",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  },
+  {
+    "file": "screenshots/repair-question.png",
+    "source": "docs/videos/awl-demo.mp4",
+    "source_in_repository": true,
+    "source_sha256": "3470c20d79bcbe02607715ca37b17dba6881096701529ae28367125455f8abec",
+    "offset_seconds": 233,
+    "transformation": "Frame export only; existing video captions retained.",
+    "note": "Source offset is a media position, not an absolute wall-clock timestamp."
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "d5854464-344f-472e-ae1f-687ced79ce36",
+    "role": "user",
+    "text": "Investigate and repair the paused capability. Ask me if the intended correction is unclear."
+  },
+  {
+    "id": "76e1b219-4652-444d-b43e-08f7e5fc6fbb",
+    "role": "assistant",
+    "model": "gpt-5.6-terra",
+    "text": "This activating control is not declared safe in the browser policy. A human must operate it or configure its reviewed scope."
+  },
+  {
+    "id": "c55af8ca-a074-411c-9657-b0450b9bd04b",
+    "role": "user",
+    "text": "I renewed the workstation lease directly. Continue investigating the original missing account. Do not substitute a different account or weaken the final identity checkpoint. Ask if a correction is needed."
+  }
+]

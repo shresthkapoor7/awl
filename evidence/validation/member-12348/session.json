@@ -1,0 +1,43 @@
+{
+  "export_format": 1,
+  "provenance": "Selected fields of the final persisted session, not raw model API history. Execution inputs/outputs retain the runtime storage redactions. See manifest.json.",
+  "persisted": {
+    "id": "run-a5ba136e-c049-44a4-8988-a01fcc29d3bd",
+    "createdAt": 1789399689407,
+    "name": "Validate Read checking balance",
+    "settings": {
+      "model": "gpt-5.6-terra",
+      "access": "configured"
+    },
+    "status": "completed",
+    "mode": "execution",
+    "control": {
+      "owner": "human",
+      "capture": "observe",
+      "generation": 3
+    },
+    "pending": null,
+    "error": null,
+    "execution": {
+      "id": "read_checking_balance",
+      "sourceChatId": "6b1041b0-38ee-418a-a692-d8113325c820",
+      "version": 1,
+      "step": 10,
+      "total": 10,
+      "status": "completed",
+      "validation": true,
+      "inputs": {
+        "member_number": "[private]",
+        "account_number": "[private]"
+      },
+      "outputs": {},
+      "error": null,
+      "uncertain": false,
+      "result": {
+        "kind": "success",
+        "outputs": {}
+      }
+    },
+    "tools": []
+  }
+}

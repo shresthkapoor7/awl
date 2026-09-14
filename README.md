@@ -1,88 +1,159 @@
 <h1><img src="public/awl.svg" width="40" height="40" alt="" align="absmiddle" /> awl</h1>
 
-Computer use that learns a workflow, turns it into a capability, and asks for help when it needs you.
+**Computer use that learns a workflow, turns it into a capability, and asks for help when it needs you.**
 
-Many applications expose useful operations only through their interface. People repeat the same searches and forms by hand; an AI agent can navigate them, but reasoning through every repeat adds cost, latency, and variability. awl connects discovery, human demonstration, deterministic execution, and repair in one local desktop workspace.
+Many back-office applications expose useful operations only through their interface. An AI agent can navigate those screens, but reasoning through every repeat adds cost, latency, and variability. awl uses a model for discovery and repair, then runs validated capabilities deterministically with new inputs.
+
+![awl workspace with sessions on the left, chat and recording controls in the center, and the embedded browser on the right](docs/images/workspace.png)
+
+*The local desktop workspace. Chat and automation share the same interactive browser with the human operator.*
+
+[Design report](REPORT.md) · [Architecture](architecture.md) · [Capability schema](electron/tools/capability-write.cts) · [Policy example](policy.example.json) · [CI workflow](.github/workflows/checks.yml)
+
+## Demo
+
+**[Watch the demo — 4:09](docs/videos/awl-demo.mp4)**
+
+[Saved artifact and run logs](evidence/README.md) · [Reproduce discovery and replay](evidence/REPRODUCE.md)
+
+A real local walkthrough: discover a member lookup, save and validate a capability, replay it with new inputs, teach through recording, and ask for human help during repair. Includes the Overview and jumping from an agent into its chat.
+
+Recorded with synthetic portal data and captions below the app. Sign-in is excluded; idle periods are shortened and accelerated footage is labeled.
+
+<details>
+<summary>Demo scope and known limitations</summary>
+
+The discovery-authored capability passes validation with two input sets and replays without model calls. The separate recording-authored capability is shown as a draft. Repair demonstrates investigation and a human question, not a newly validated repair version.
+
+Authentication pauses currently reset accumulated validation cases, so both sessions were authenticated before the final validation runs. The demonstrated balance output contains the full register text rather than an isolated currency value.
+
+</details>
+
+## Demo portal source
+
+The fictional Member Servicing Portal used in the video is included in [`dummy/`](dummy/). It contains the application source, synthetic fixture definitions, dependency lockfile, and portal tests. It is a plain source copy, with no separate Git repository or recorded session data.
+
+Requires **Python 3.12+** and **uv**. From the awl repository root, run it in a separate terminal:
+
+```sh
+cd dummy
+uv sync --locked
+uv run python run.py --port 7311
+```
+
+Open **http://127.0.0.1:7311** in awl's browser and allow that origin in **Manage access**. The first launch creates a fresh synthetic database; later launches preserve it. See the [portal README](dummy/README.md) for training logins and fresh-fixture setup, and [workflow scenarios](dummy/docs/scenarios.md) for inputs and expected outcomes.
 
 ## Run locally
 
-Requires Node.js 22.12+ and npm. Electron is a project dependency.
+Requires **Node.js 22.12+** and npm. Electron is installed with the project dependencies.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Set `OPENAI_API_KEY` in a project-root `.env` and restart Electron. Discovery and repair use the official OpenAI SDK with `gpt-5.6-terra`; `OPENAI_MODEL` overrides the model. The composer lets you select a model per chat; other model IDs must support images, reasoning, and tools and be available to your API key. The key stays in the main process. Validating and running saved capabilities does not require an API key.
+To enable discovery and repair, create or edit `.env` in the project root:
 
-The composer also offers **Configured access** and **Read only** browser modes. Read only allows inspection, navigation, and scrolling within the configured policy; automated clicks, typing, selections, and key presses are blocked. Manual browsing remains under your control. Settings persist per chat and can be changed while the agent is stopped.
-
-Renderer edits reload during development. Restart `npm run dev` after changing Electron or preload code. `npm start` builds and launches the app; `npm run dev:web` previews only the renderer. On macOS, the launcher prepares a cached awl.app with its own menu-bar and Dock identity.
-
-## The workflow
-
-1. **Discover.** Give a website and a goal in chat. Watch the agent use the actual Chromium browser beside the conversation.
-2. **Help.** A structured question pauses the agent and transfers the same session to you. Authentication happens directly in the browser. Select Resume to allow a fresh observation and continue. Stop prevents further scheduling; it cannot undo an action already dispatched.
-3. **Teach.** Select Record and demonstrate a workflow. Recording continues across navigation and page updates. Pause for private interaction; select Stop & build when finished. awl infers parameters and starts drafting the capability automatically. The captured steps remain available to inspect.
-4. **Validate.** Review the versioned contract in Capabilities and launch validation with explicit inputs. Parameterized capabilities require successful runs with two distinct input sets before Run appears. Each launch gets a new chat and browser session.
-5. **Run.** The constrained executor navigates, resolves targets, performs declared operations, verifies the final checkpoint, and reads outputs. It has no model client, shell, or arbitrary script execution.
-6. **Repair.** Missing or ambiguous targets and unexpected states pause execution. Resume checks the current page; an uncertain action requires explicit confirmation before advancing. Repair with awl explicitly reintroduces the model in the existing browser. It copies the pinned contract into the repair chat and writes new draft versions without modifying the original. Validate the correction before using it again.
-
-Capabilities compile into a bounded operation plan and a readable JavaScript artifact. The runtime executes the validated plan directly; it does not evaluate generated JavaScript. Schema validation alone does not unlock execution.
-
-## Workspace
-
-Each chat has its own isolated browser session. Tabs, forms, cookies, and navigation survive view changes and renderer reloads. The optional 3D Overview projects actual run state; selecting an agent returns to its conversation. Completed tasks head to the water cooler; ending a model response alone does not mark a task complete.
-
-Both side panels collapse and resize. Use **Cmd+B** for the left, **Cmd+Option+B** for the right, and **Cmd/Ctrl+L** for the browser address. The browser includes fullscreen, detached preview, device sizing, DevTools, zoom, appearance, and cookie/cache controls.
-
-Run history plays back recorded events and retained screenshots. Playback never executes browser actions. Private intervals appear as gaps; events without images remain visible in the timeline.
-
-## State and capture
-
-Conversations, model history, reviewed recording state, and the bounded run journal are saved locally under the application's user-data directory. Writes are atomic. Restart restores conversations in private human control. Browser profiles, tabs, and authentication are deliberately ephemeral; restoring a transcript does not resume an interrupted capability or prove its last action succeeded.
-
-Discovery observations are independent of demonstration recording. During private takeover, model observation is stopped. Recording excludes input from frames with detected password, OTP, or payment controls without ending the recording session. Capture resumes on safe pages; explicit Pause keeps capture off until you select Record again. Field detection uses semantic hints and is not a complete sensitive-data classifier: use private control for sensitive information it cannot recognize. Credentials never belong in chat or capability inputs.
-
-The model receives accumulated conversation state with API storage disabled. Input token counts trigger supported compaction at 48,000 tokens. Pending questions, ownership, capability versions, and the journal remain outside the compacted context. The newest two screenshots remain in model context; the journal retains at most 20 exact tool results and four permitted screenshots for retrieval/history. Other journal metadata is capped at 2,000 events. A workspace currently supports 32 chats, with a 16 MB persistence limit per conversation.
-
-Each model turn is bounded to 30 responses, 60 tool calls, and five minutes; individual tools have a 20-second deadline. Repeated identical results prompt a question. Deterministic steps have a 15-second deadline and never silently fall back to a model.
-
-## Tools and targeting
-
-The model can name chats, open/navigate browsers, manage tabs, capture screenshots, inspect DOM/frames, act on observed elements, wait for conditions, ask the user, verify completion, read retained evidence, and read/write capability drafts. Tools have strict schemas and per-chat scope. Actions consume snapshot references and reject stale or replaced nodes.
-
-Reusable targets support unique CSS attributes, common native roles and accessible names, labels, placeholders, scoped text, supported frames, and open shadow roots. Ambiguity produces an error; the resolver does not pick the first match. Existing CSS-only drafts remain readable.
-
-Current execution supports one tab and one declared origin per capability, with navigation, click, fill, select, key submission, text checkpoints, and string outputs. Recording is structured action capture, not continuous video. Actions are delivered through an isolated browser binding before navigation destroys the document, and hooks are installed in new documents. Frame inspection reconnects through page changes. Private gaps and unsupported targets remain visible evidence; the model must investigate missing steps rather than invent them. Recordings are bounded to 500 steps. Broader desktop control, persistent login profiles, downloads, and submission packaging remain outside this milestone.
-
-## Checks
-
-```sh
-npm run build
-npm run test:all
+```dotenv
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-5.6-terra
+# Optional: load access rules from a specific JSON file.
+# AWL_POLICY_FILE=policy.example.json
 ```
 
-GitHub Actions runs the build and fixture tests on Linux and macOS for pull requests and feature-branch pushes. No API key is needed. Tests cover browser isolation, targeting, private capture, handoff/cancellation, recording, two-input validation, zero-model execution, explicit repair, context/restart handling, workspace UI, and office behavior. Linux tests run under Xvfb. Failure screenshots are uploaded as CI artifacts.
+Restart Electron after changing `.env`. The key stays in the main process. The composer offers Terra, Astra, and Luna presets, plus a custom model ID; availability depends on your API access. Model selection is saved per chat.
 
-`npm run test:tools` and `npm run test:ui` run smaller suites. The optional `AWL_LIVE_TEST=1 node scripts/agent-live-check.mjs` uses the configured key and incurs API usage; build first.
+Without a key, you can browse manually and validate or run existing saved capabilities. Discovery, building a capability from a recording, and model-assisted repair require a key. The app and browser run locally; model inference uses the OpenAI API, and websites may require network access.
 
-### Browser policy
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the desktop app with renderer hot reload. |
+| `npm start` | Build and launch the desktop app. |
+| `npm run dev:web` | Preview the React interface only; no native browser or agent runtime. |
 
-Open the composer’s access dropdown → **Manage access** to add allowed websites and paths, choose action types, and edit approved controls, blocked controls, and private-field selectors. **Save access** applies the policy to all chats and open tabs; stop active agents and recordings first. Read only chats retain their narrower restrictions. Rules are saved locally and loaded when awl restarts.
+Restart `npm run dev` after editing Electron or preload code. On macOS, the launcher prepares a cached awl.app with its own menu-bar and Dock identity.
 
-For an existing JSON policy, set `AWL_POLICY_FILE` in `.env` (see `policy.example.json`) and restart awl. The editor then reads and saves that file. It detects intervening file changes and asks you to reload instead of overwriting them. Without saved rules, automation has no permitted websites. Human browsing remains available. Origins are exact; paths are exact or end in `/*` for a subtree. Include legitimate authentication destinations and frame routes explicitly. Policy checks apply to discovery, validation, execution, and repair; the model cannot edit the policy.
+## Configure access
 
-Declare allowed action types and narrowly scoped `safeControls` for activating buttons or Enter submissions. Ordinary links must remain within allowed destinations. `blockedControls` and recognized consequential controls (posting, transfers, payments, deletion, authorization) require direct human operation even when a broad safe-control rule would match. Take over for the particular action, verify its result, then resume. The text classifier is conservative and incomplete: explicitly block application-specific risky controls. Do not allow an entire form or all buttons without reviewing their effects. The browser still runs the application's JavaScript; control policy is not a sandbox for arbitrary side effects inside a permitted application.
+Automation starts with **no permitted websites**. Open the composer's access dropdown → **Manage access** before starting a task.
 
-### Data retention
+1. Add the target origin and permitted paths, including any required frame or authentication destinations.
+2. Choose allowed action types and narrowly scoped safe controls for buttons and Enter submissions.
+3. Add application-specific blocked controls and private-field selectors, then select **Save access**.
 
-Authentication remains private. Identified personal fields (including common name/contact table columns and configured `sensitiveSelectors` in the browser policy) are redacted from DOM observations and saved text. Capability writes reject known private literals; use parameters and structural targets. Screenshot capture is refused when identified personal fields are visible. Detection is heuristic: configure selectors for the target application's PII and do not use real banking data to evaluate the prototype.
+Stop active agents and recordings before changing workspace policy. **Read only** restricts a chat to inspection, navigation, and scrolling within that policy. It does not grant additional access.
 
-Raw tool history, opaque model compaction/reasoning, screenshots, and execution input/output values stay in memory and are omitted from workspace files. Restart rebuilds model context from redacted chat messages, not the original SDK history. Live outputs remain available to the caller during the run. Names and other unstructured personal data without recognizable metadata may evade detection; redacted text is not an assurance that arbitrary documents are safe to publish. Review any exported evidence before sharing it.
+The [policy example](policy.example.json) demonstrates the file format; its localhost address and selectors must be adapted to your target. Origins are exact. Paths are exact or end in `/*` for a subtree. Rules persist in the local user-data directory, or in the file selected by `AWL_POLICY_FILE`.
 
-### Outcomes and intervention evidence
+Recognized consequential actions and explicitly blocked controls require direct human operation. A one-time handoff never becomes permanent permission. See [policy enforcement](electron/policy.cts) and [the access editor](src/components/PolicyEditor.tsx).
 
-Version 3 capabilities can declare exceptional states scoped to a step: a named business outcome, a hard failure, or a bounded recovery that acknowledges a known control or waits before re-observing. Recovery never repeats the previous action automatically. Unknown states pause with a structured result containing the step, expectation, observation, and uncertainty. `{{input_name}}` bindings work in target values/scopes and text assertions; CSS values are escaped, and undeclared bindings are rejected. Earlier artifact versions remain readable.
+## Discover, validate, replay
 
-Failure history includes a bounded DOM-structure snapshot with frame/control states, excluding text, values, URLs, and screenshots. This deliberately trades visual detail for safe persisted debugging evidence. Human resume records a redacted explanation (or a private-authentication completion event), and text checkpoints must match exactly one frame. After a human completes a blocked or uncertain action, the executor verifies the next observable target/checkpoint before advancing. It does not treat the confirmation alone as evidence that the whole workflow succeeded.
+Use a sandbox with synthetic data and a known starting state.
+
+1. **Discover.** Select **New agent**, give a URL and a concrete goal, and let awl operate the live browser. State the expected result and where it should stop.
+2. **Help when asked.** A structured question pauses automation. Complete the necessary action in the same browser, then select **Resume**. Authentication belongs in the browser, never in chat.
+3. **Save.** Ask awl to save the successful workflow as a parameterized capability. Inspect its inputs, outputs, targets, exceptional states, and final checkpoint in **Capabilities**.
+4. **Validate.** Supply input values and run validation. Parameterized capabilities need successful validation with two distinct input sets before **Run** becomes available. Each launch opens a new chat and browser session.
+5. **Replay.** Select **Run** with new inputs. The executor follows the validated plan, checks completion, and returns outputs without model calls.
+6. **Repair if needed.** An unexpected state pauses execution with context. **Repair with awl** explicitly reintroduces the model in the same browser and creates a separate draft. Validate the repaired version before using it again.
+
+You can also teach by demonstration: select **Record**, perform the workflow, and select **Stop & build**. Recording continues across page changes. **Pause** excludes private interaction until you explicitly resume recording. The recorded steps remain available for review.
+
+Capabilities compile into a constrained operation plan and a readable JavaScript artifact. The runtime executes the validated plan directly; it does not evaluate arbitrary generated JavaScript. Visual run-history playback only displays events and retained images—it never re-executes a capability.
+
+## Workspace and overview
+
+Sessions appear newest first. Both side panels collapse and resize. The composer includes model and access controls, and the chat navigation rail jumps between turns. Browser controls include fullscreen, detached preview, device sizing, DevTools, zoom, appearance, and cookie/cache management.
+
+| Shortcut | Action |
+| --- | --- |
+| Cmd+B | Toggle the left sidebar. |
+| Cmd+Option+B | Toggle the browser panel. |
+| Cmd/Ctrl+L | Focus the browser address. |
+
+![awl's optional 3D overview with one agent waiting for human help and another completed](docs/images/overview.png)
+
+*Overview with sample session states. Selecting an agent opens its conversation; changing views does not change execution state.*
+
+The office projects session activity into working, waiting, and completed states. Completed agents head to the water cooler. It is optional; chat and browser remain the main workspace.
+
+## Storage and privacy
+
+State lives under Electron's user-data directory—on macOS, normally `~/Library/Application Support/awl/`:
+
+| Location | Contents |
+| --- | --- |
+| `workspace/<chat-id>.json` | Redacted conversations, settings, reviewed recording state, and bounded run metadata. |
+| `capabilities/<chat-id>/<capability-id>/` | Versioned contracts, generated JavaScript, and validation records. |
+| `policy.json` | Workspace access rules, unless a custom policy file is configured. |
+
+Workspace writes are atomic. Raw tool history, opaque model context, screenshots, and execution input/output values stay in memory and are omitted from workspace files. Restart reconstructs context from redacted messages. Tabs and authentication are ephemeral and are not restored with the conversation.
+
+Private takeover stops model observation. Capture screens recognized authentication/payment fields and identified personal data, including supported frames and open shadow roots. Private values detected in a chat are redacted from its observations and saved text; capability writes reject known private literals. Detection is heuristic, so configure private-field selectors for your application and use synthetic data. Review evidence before publishing it.
+
+Policy controls browser operations, not every possible side effect of the target's JavaScript. Stop prevents further scheduling; it cannot undo an action already dispatched. These boundaries are explained in [Architecture](architecture.md#policy-and-data-handling).
+
+## Implementation map
+
+| Area | Source |
+| --- | --- |
+| Design, boundaries, and trade-offs | [architecture.md](architecture.md) |
+| Discovery, handoff, recording coordination, and repair | [agent-runtime.cts](electron/agent-runtime.cts) |
+| Embedded browser and session lifecycle | [browser.cts](electron/browser.cts) |
+| Model tools and their contracts | [tools/index.cts](electron/tools/index.cts), [tools/core.cts](electron/tools/core.cts) |
+| Capability schema and versioned writes | [capability-write.cts](electron/tools/capability-write.cts) |
+| Compilation, validation, and deterministic execution | [executor.cts](electron/executor.cts) |
+| Target resolution and input bindings | [targeting.cts](electron/targeting.cts), [bindings.ts](shared/bindings.ts) |
+| Structured execution results | [execution.ts](shared/execution.ts) |
+| Policy and privacy | [policy.cts](electron/policy.cts), [privacy.cts](electron/privacy.cts) |
+| Recording, evidence, and history | [recorder.cts](electron/recorder.cts), [evidence.cts](electron/evidence.cts), [journal.cts](electron/journal.cts) |
+| Context and local persistence | [context.cts](electron/context.cts), [workspace-store.cts](electron/workspace-store.cts) |
+
+## Checks and current limits
+
+[GitHub Actions](.github/workflows/checks.yml) builds the app and runs unit, browser, and workflow checks on Linux and macOS. Fixture checks require no API key; Linux uses Xvfb. Failure screenshots are uploaded as CI artifacts. The workflow runs `npm run build` followed by `npm run test:all`; `test:tools` and `test:ui` select smaller suites.
+
+The current executor supports one tab and one declared origin per capability, seven operations, typed scalar inputs, and string extraction outputs. Targets can use CSS, common native roles and names, labels, placeholders, scoped text, frames, and open shadow roots. Missing or ambiguous targets pause execution.
+
+Version 3 contracts distinguish business outcomes, bounded recovery, and hard failures. Recovery handles declared states; it never silently invokes a model or blindly repeats an uncertain write. Native desktop automation, tenant-specific capability packages, persistent login profiles, and downloads are not implemented. The demo above shows genuine discovery and replay against a local synthetic portal; the screenshots illustrate the interface. [Evidence](evidence/README.md) includes the saved artifact, run logs, failure capture, provenance, and reproduction instructions. The [design report](REPORT.md) explains the decisions, extension points, and remaining gaps. Final submission review remains outstanding.

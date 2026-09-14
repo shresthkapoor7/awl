@@ -1,0 +1,207 @@
+{
+  "schema_version": 3,
+  "id": "read_checking_balance",
+  "name": "Read checking balance",
+  "description": "In an authenticated Meridian workstation session, look up an exact member, open Share register, and read the Available USD value for the requested account.",
+  "origin": "http://127.0.0.1:7311",
+  "expected_version": 0,
+  "inputs": [
+    {
+      "name": "member_number",
+      "type": "string",
+      "description": "Exact member number to look up."
+    },
+    {
+      "name": "account_number",
+      "type": "string",
+      "description": "Exact share/checking account number to verify in the Share register."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "account_row",
+      "type": "string",
+      "description": "The matching Share register row for the requested account, including Available USD."
+    },
+    {
+      "name": "available_usd",
+      "type": "string",
+      "description": "Available USD value read from the requested account's Share register row."
+    }
+  ],
+  "steps": [
+    {
+      "operation": "navigate",
+      "selector": null,
+      "input": null,
+      "value": "http://127.0.0.1:7311/terminal.asp",
+      "output": null,
+      "target": null
+    },
+    {
+      "operation": "click",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "role",
+        "value": "10 Member inquiry",
+        "role": "link",
+        "frame": null,
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "fill",
+      "selector": null,
+      "input": "member_number",
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "css",
+        "value": "input[name=\"f01\"]",
+        "role": null,
+        "frame": {
+          "url": "http://127.0.0.1:7311/screen.asp",
+          "name": "work"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "click",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "role",
+        "value": "Transmit",
+        "role": "button",
+        "frame": {
+          "url": "http://127.0.0.1:7311/screen.asp",
+          "name": "work"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "click",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "css",
+        "value": "input[name=\"row\"]",
+        "role": null,
+        "frame": {
+          "url": "http://127.0.0.1:7311/screen.asp",
+          "name": "work"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "click",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "role",
+        "value": "Process selected record >",
+        "role": "button",
+        "frame": {
+          "url": "http://127.0.0.1:7311/screen.asp",
+          "name": "work"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "click",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": null,
+      "target": {
+        "kind": "role",
+        "value": "01 Share register",
+        "role": "link",
+        "frame": {
+          "url": "http://127.0.0.1:7311/screen.asp",
+          "name": "work"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "extract_text",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": "account_row",
+      "target": {
+        "kind": "css",
+        "value": "body",
+        "role": null,
+        "frame": {
+          "url": "http://127.0.0.1:7311/accounts.asp",
+          "name": "register"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "extract_text",
+      "selector": null,
+      "input": null,
+      "value": null,
+      "output": "available_usd",
+      "target": {
+        "kind": "css",
+        "value": "body",
+        "role": null,
+        "frame": {
+          "url": "http://127.0.0.1:7311/accounts.asp",
+          "name": "register"
+        },
+        "shadow": [],
+        "within": null
+      }
+    },
+    {
+      "operation": "assert_text",
+      "selector": null,
+      "input": null,
+      "value": "{{account_number}}",
+      "output": null,
+      "target": {
+        "kind": "text",
+        "value": "{{account_number}}",
+        "role": null,
+        "frame": {
+          "url": "http://127.0.0.1:7311/accounts.asp",
+          "name": "register"
+        },
+        "shadow": [],
+        "within": null
+      }
+    }
+  ],
+  "on_unknown_state": "pause_for_human",
+  "handlers": null,
+  "version": 1,
+  "status": "draft",
+  "source_chat_id": "6b1041b0-38ee-418a-a692-d8113325c820",
+  "created_at": "2026-09-14T15:22:53.417Z"
+}

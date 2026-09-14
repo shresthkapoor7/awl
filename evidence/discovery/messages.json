@@ -1,0 +1,35 @@
+[
+  {
+    "id": "19211171-aa63-428b-9579-bbd93f4b1aa8",
+    "role": "user",
+    "text": "Open http://127.0.0.1:7311 and look up member 12345. Read the available USD balance of checking account 12345-00 from the Share register. Return only the member number, account number, and balance. Do not modify records or move funds. Ask me to sign in privately if needed."
+  },
+  {
+    "id": "298bee9e-633d-4a33-a90d-09d2f6027ac1",
+    "role": "assistant",
+    "model": "gpt-5.6-terra",
+    "text": "Authentication or payment fields are visible. Stop observation and ask the user to complete them in the browser."
+  },
+  {
+    "id": "f2b84ea9-20cf-47b8-a1ad-c035e51244cd",
+    "role": "user",
+    "text": "Continue from the current page."
+  },
+  {
+    "id": "b3f0c3fa-18e9-4992-af1f-eea4f0b712fb",
+    "role": "assistant",
+    "model": "gpt-5.6-terra",
+    "text": "Opened member 12345's Share register and verified checking account 12345-00 shows Available USD 2,450.75. No records were modified and no funds were moved."
+  },
+  {
+    "id": "23806fca-5a7c-42a9-98ff-9a0f20ac0213",
+    "role": "user",
+    "text": "Save this observed member lookup as a reusable capability named Read checking balance. Parameters: member_number and account_number. Navigate to Member inquiry in the authenticated workstation, search the exact member number, open its record and Share register, and extract Available USD from the exact account row. Use observed semantic targets with correct frame scope and parameterized member/account targeting. Include a final checkpoint confirming the requested account is visible. No authentication steps, no record changes, no funds moved. Save the draft now."
+  },
+  {
+    "id": "a81e03f3-0129-422f-a918-a5c6b1241230",
+    "role": "assistant",
+    "model": "gpt-5.6-terra",
+    "text": "Saved draft capability **Read checking balance** (v1). It is not yet validated."
+  }
+]
