@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}Meridian · Member Services{% endblock %}</title><link rel="stylesheet" href="{{ url_for('static', filename='terminal.css') }}"><script src="{{ url_for('static', filename='terminal.js') }}" defer></script></head>
+<body>{% block body %}<main class="page">
+<div class="screen-heading"><h1>{% block heading %}MEMBER SERVICES{% endblock %}</h1><span class="code">{% block code %}MMS / R7.04{% endblock %}</span></div>
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+{% block content %}{% endblock %}
+<div class="footnote">MERIDIAN CU · TRAINING PARTITION 003 · ALL MEMBER RECORDS AND FUNDS ARE FICTIONAL</div>
+</main>{% endblock %}</body></html>

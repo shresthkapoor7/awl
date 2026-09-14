@@ -1,0 +1,2 @@
+{% macro ticket() %}<input type="hidden" name="_ticket" value="{{ csrf_token() }}">{% endmacro %}
+{% macro member_link(member) %}<p class="crumb"><a href="{{ url_for('portal.screen',screen='M100') }}">Member index</a> &gt; <a href="{{ url_for('portal.screen',screen='M200',m=member.id) }}">{{ member.id }} / {{ member.last_name }}, {{ member.first_name }}</a></p>{% endmacro %}

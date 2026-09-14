@@ -1,0 +1,7 @@
+{% extends 'base.html' %}{% from 'macros.html' import ticket with context %}
+{% block title %}Operator sign-on · Meridian{% endblock %}
+{% block body %}<main class="login"><div class="brand">MERIDIAN<small>MEMBER SERVICES / HOST ACCESS</small></div><h1>OPERATOR SIGN-ON &nbsp; / &nbsp; TERMINAL 003-17</h1>
+<div class="notice tiny">TRAINING SYSTEM. Fictional institution and records. Authorized demonstration operators only.</div>
+{% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" target="_top">{{ ticket() }}<input type="hidden" name="next" value="{{ target }}"><table class="form-grid"><tr><td><label for="op">Operator ID</label></td><td><input id="op" name="operator" maxlength="64" autocomplete="username" autofocus required></td></tr><tr><td><label for="pw">Password</label></td><td><input id="pw" name="password" type="password" maxlength="256" autocomplete="current-password" required></td></tr><tr><td>Processing branch</td><td><select name="branch"><option>003 — Main operations</option></select></td></tr></table><div class="actions"><span class="tiny muted">Passwords are case sensitive.</span><button class="right" type="submit">Establish session &gt;</button></div></form>
+<div class="login-footer">MMS RELEASE 7.04 / BROWSER TERMINAL ADAPTER<br>SESSION RENEWAL MAY BE REQUIRED DURING PROCESSING.</div></main>{% endblock %}
