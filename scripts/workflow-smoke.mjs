@@ -178,7 +178,7 @@ try {
     });
   }
   await page.getByRole("button", { name: "Stop & build", exact: true }).click();
-  await page.getByText(/Recording saved. Add OPENAI_API_KEY/).waitFor();
+  await page.getByText(/Recording saved. Enable Codex/).waitFor();
   await page.getByText(/recorded steps/).click();
   assert.equal(await page.locator(".recorded-steps input").count(), 0);
   assert(

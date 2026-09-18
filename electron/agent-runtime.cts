@@ -1,14 +1,12 @@
 import { sessionSettingsSchema } from "../shared/session-settings.js";
-import { redactText, forgetPrivate } from "./privacy.cjs";
+import { redactText, redactData, forgetPrivate } from "./privacy.cjs";
 import { captureFailure } from "./evidence.cjs";
 import { browserWait } from "./tools/browser-wait.cjs";
 import { toolSignal as observationScope, abortable } from "./tools/core.cjs";
-import { WorkspaceStore } from "./workspace-store.cjs";
-import {
-  budgetContext,
-  closeOpenCalls,
-  type ContextClient,
-} from "./context.cjs";
+import { WorkspaceStore, type CodexDelivery } from "./workspace-store.cjs";
+import { closeOpenCalls } from "./context.cjs";
+import type { SessionHistory } from "./stored-session.cjs";
+import { type AgentProvider, ProviderError } from "./agent-provider.cjs";
 import {
   Execution,
   bindInputs,
@@ -20,11 +18,6 @@ import { deleteCapabilityArtifacts } from "./capability-catalog.cjs";
 import type { CapabilityRef } from "../shared/agent.js";
 import { Recorder } from "./recorder.cjs";
 import { Journal } from "./journal.cjs";
-import OpenAI from "openai";
-import type {
-  ResponseInput,
-  Response,
-} from "openai/resources/responses/responses";
 import { randomUUID } from "node:crypto";
 import type { AgentChat, PendingQuestion } from "../shared/agent.js";
 import { dispatch, toolDefinition, type BrowserAccess } from "./tools/core.cjs";
@@ -38,17 +31,13 @@ Keep text concise. You can use only the supplied tools; you have no shell or gen
 After a successful workflow, save a parameterized draft with capability_write if the observed targets, inputs, outputs, and final checkpoint support it. Read the existing draft before updating. Drafts must be validated through the Capabilities tab before deterministic execution. Never claim a draft is already validated. Use observed target objects from browser_dom, including role/label/placeholder strategies and frame/shadow scope. Do not encode transient element refs in a saved capability. If target is null, inspect another strategy or ask the human to identify the control. A missing element ID is not evidence that the website cannot be automated.
 Use ask_user whenever you need human input or authentication; do not merely end a response promising to continue. Call task_complete with an observed checkpoint when the browser goal is verified. A normal response ending leaves the task ready, not completed.
 Only carry out actions within the user’s requested goal. End with a concise result or the exact blocker.`;
-type Client = {
-  responses: ContextClient & {
-    create: (
-      body: OpenAI.Responses.ResponseCreateParamsNonStreaming,
-      options?: { signal: AbortSignal },
-    ) => Promise<Response>;
-  };
-};
 type Session = {
   chat: AgentChat;
-  history: ResponseInput;
+  history: SessionHistory;
+  codexThreadId?: string;
+  codexDelivery?: CodexDelivery;
+  deliveryRecovery?: boolean;
+  historyCursor?: number;
   controller: AbortController | null;
   reviewedEvidence?: string;
 };
@@ -68,7 +57,7 @@ export class AgentRuntime {
   private launchingCapabilities = new Map<string, number>();
   constructor(
     private options: {
-      client: Client | null;
+      client: AgentProvider | null;
       browser: BrowserAccess;
       directory: string;
       publish: (chat: AgentChat) => void;
@@ -119,6 +108,44 @@ export class AgentRuntime {
         chat.error =
           "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
         closeOpenCalls(saved.history);
+        const delivery = saved.codexDelivery ?? {
+          acceptedMessageId: null,
+          dismissedMessageId: null,
+        };
+        let deliveryRecovery = false;
+        if (saved.codexThreadId) {
+          // Storage rebuilds history from visible messages, so an in-memory
+          // history index is not a durable delivery boundary. Use stable IDs.
+          const indexOf = (id: string | null) =>
+            chat.messages.findIndex(
+              (message) => message.role === "user" && message.id === id,
+            );
+          const boundary = Math.max(
+            indexOf(delivery.acceptedMessageId),
+            indexOf(delivery.dismissedMessageId),
+          );
+          saved.history = chat.messages
+            .slice(boundary + 1)
+            .filter((message) => message.role === "user")
+            .map((message) => ({ role: message.role, content: message.text }));
+          deliveryRecovery = saved.history.length > 0;
+          if (deliveryRecovery) {
+            chat.status = "waiting";
+            chat.pending = {
+              id: randomUUID(),
+              reason: "clarification",
+              question: `Delivery of ${saved.history.length} saved message(s) could not be confirmed. They remain in chat. Check prior results before resending; an earlier request may already have reached Codex.`,
+              choices: ["Keep in chat only", "Resend saved messages"],
+              expected_text: null,
+            };
+          }
+        }
+        if (delivery.dismissedMessageId)
+          saved.history.push({
+            role: "developer",
+            content:
+              "The human kept previously unconfirmed requests in chat only. Do not retry dismissed requests; follow their next explicit goal.",
+          });
         saved.history.push({
           role: "user",
           content:
@@ -131,7 +158,13 @@ export class AgentRuntime {
           "restart",
           "Browser not restored; capture remains private.",
         );
-        this.sessions.set(chat.id, { ...saved, controller: null });
+        this.sessions.set(chat.id, {
+          ...saved,
+          codexDelivery: delivery,
+          deliveryRecovery,
+          historyCursor: 0,
+          controller: null,
+        });
       } catch {
         // A corrupt or incompatible record cannot prevent other chats loading.
         this.journal.remove(saved.chat.id);
@@ -159,18 +192,26 @@ export class AgentRuntime {
       return;
     session.chat.journal = this.journal.list(session.chat.id);
     this.options.publish(structuredClone(session.chat));
-    void this.store
-      ?.save({ chat: session.chat, history: session.history })
-      .catch(() => {
-        if (
-          this.sessions.get(session.chat.id) !== session ||
-          this.deleting.has(session.chat.id)
-        )
-          return;
-        session.chat.error =
-          "Could not save this conversation locally. Free disk space before closing awl.";
-        this.options.publish(structuredClone(session.chat));
-      });
+    void this.persist(session).catch(() => {
+      if (
+        this.sessions.get(session.chat.id) !== session ||
+        this.deleting.has(session.chat.id)
+      )
+        return;
+      session.chat.error =
+        "Could not save this conversation locally. Free disk space before closing awl.";
+      this.options.publish(structuredClone(session.chat));
+    });
+  }
+  private persist(session: Session) {
+    return (
+      this.store?.save({
+        chat: session.chat,
+        history: session.history,
+        codexThreadId: session.codexThreadId,
+        codexDelivery: session.codexDelivery,
+      }) ?? Promise.resolve()
+    );
   }
   create(id: string): AgentChat | { error: string } {
     if (this.deleting.has(id) || this.deleted.has(id))
@@ -201,6 +242,7 @@ export class AgentRuntime {
           control: { owner: "human", capture: "observe", generation: 0 },
         },
         history: [],
+        codexDelivery: { acceptedMessageId: null, dismissedMessageId: null },
         controller: null,
       };
       this.sessions.set(id, session);
@@ -242,16 +284,11 @@ export class AgentRuntime {
       session.chat.settings?.model ?? this.options.model ?? TERRA_MODEL;
     this.options.browser.setAccess?.(id, parsed.data.access);
     if (parsed.data.model !== previousModel) {
-      // Opaque reasoning/compaction items belong to the model that produced them.
-      // Rebuild a portable transcript; require fresh browser observations.
-      session.history = session.chat.messages.map((message) => ({
-        role: message.role,
-        content: message.text,
-      }));
+      // Codex handles model switching within the existing thread.
       session.history.push({
         role: "developer",
         content:
-          "The model changed. The transcript is retained, but previous tool state is unavailable. Inspect the current browser before acting. Do not repeat completed writes.",
+          "The model changed. The transcript is retained. Inspect the current browser before acting. Do not repeat completed writes.",
       });
       session.chat.contextTokens = undefined;
     }
@@ -276,12 +313,12 @@ export class AgentRuntime {
     )
       return { error: "Use a message between 1 and 16000 characters." };
     if (!this.options.client)
-      return { error: "Add OPENAI_API_KEY to .env and restart awl." };
+      return { error: "Codex is unavailable. Enable Codex and restart awl." };
     const created = this.create(id);
     if (!("status" in created)) return created;
     const session = this.sessions.get(id)!;
     if (session.controller) return { error: "This agent is already working." };
-    if (session.chat.pending)
+    if (session.chat.pending || session.deliveryRecovery)
       return { error: "Use Resume to answer the pending request." };
     if (this.executions.has(id))
       return { error: "Use Resume or Repair for the paused capability." };
@@ -374,8 +411,63 @@ export class AgentRuntime {
       return { error: "Stop recording before resuming." };
     if (answer.length > 4000)
       return { error: "Keep the answer under 4000 characters." };
+    if (session.deliveryRecovery) {
+      if (!["Keep in chat only", "Resend saved messages"].includes(answer))
+        return {
+          error:
+            "Choose whether to resend the saved messages or keep them in chat only.",
+        };
+      if (answer === "Keep in chat only") {
+        const controller = (session.controller = new AbortController());
+        const delivery: CodexDelivery = {
+          acceptedMessageId: session.codexDelivery?.acceptedMessageId ?? null,
+          dismissedMessageId:
+            session.chat.messages
+              .filter((message) => message.role === "user")
+              .at(-1)?.id ?? null,
+        };
+        const previousDelivery = session.codexDelivery;
+        const previousPending = session.chat.pending;
+        session.codexDelivery = delivery;
+        session.deliveryRecovery = false;
+        session.chat.pending = null;
+        session.chat.status = "idle";
+        session.chat.error = null;
+        try {
+          // The dismissal marker and cleared prompt must be one atomic save.
+          await this.persist(session);
+          session.history = [
+            {
+              role: "developer",
+              content:
+                "The app restarted without browser state. The human chose not to resend unconfirmed earlier requests. Do not execute them; follow only their next explicit request.",
+            },
+          ];
+          session.historyCursor = 0;
+          this.journal.add(
+            id,
+            "human",
+            "delivery",
+            "Kept unconfirmed messages in chat without resending.",
+          );
+          return {};
+        } catch {
+          session.codexDelivery = previousDelivery;
+          session.deliveryRecovery = true;
+          session.chat.pending = previousPending;
+          session.chat.status = "waiting";
+          return {
+            error:
+              "Could not save this choice. The saved messages still need review.",
+          };
+        } finally {
+          if (session.controller === controller) session.controller = null;
+          this.publish(session);
+        }
+      }
+    }
     if (!this.options.client && !this.executions.has(id))
-      return { error: "Add OPENAI_API_KEY to .env and restart awl." };
+      return { error: "Codex is unavailable. Enable Codex and restart awl." };
     const pending = session.chat.pending;
     if (pending.reason !== "authentication" && !answer.trim())
       return {
@@ -455,6 +547,8 @@ export class AgentRuntime {
         "resume",
         `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
       );
+      const recoveringDelivery = session.deliveryRecovery;
+      session.deliveryRecovery = false;
       session.chat.pending = null;
       session.controller = null;
       session.history.push({
@@ -470,7 +564,16 @@ export class AgentRuntime {
         });
         delete session.reviewedEvidence;
       }
-      return this.send(id, answer.trim() || "Continue from the current page.");
+      const result = this.send(
+        id,
+        answer.trim() || "Continue from the current page.",
+      );
+      if (result.error && recoveringDelivery) {
+        session.deliveryRecovery = true;
+        session.chat.pending = pending;
+        this.publish(session);
+      }
+      return result;
     } catch (error) {
       session.chat.error =
         error instanceof Error &&
@@ -749,7 +852,7 @@ export class AgentRuntime {
       return { error: "Pause a capability run before entering repair." };
     if (!this.options.client)
       return {
-        error: "Repair needs OPENAI_API_KEY. Deterministic runs do not.",
+        error: "Repair needs Codex. Deterministic runs do not.",
       };
     this.repairing.add(id);
     try {
@@ -866,7 +969,7 @@ export class AgentRuntime {
         if (!this.options.client)
           return {
             error:
-              "Recording saved. Add OPENAI_API_KEY and restart to build the capability.",
+              "Recording saved. Enable Codex and restart to build the capability.",
           };
         const inferred = new Map<string, string>();
         const evidence = steps.map((step) => {
@@ -942,6 +1045,7 @@ export class AgentRuntime {
     }
   }
   close() {
+    this.options.client?.close();
     for (const recorder of this.recorders.values()) recorder.close();
     for (const session of this.sessions.values()) session.controller?.abort();
   }
@@ -962,74 +1066,87 @@ export class AgentRuntime {
     let lastProgress = "";
     let repeats = 0;
     try {
-      for (let turn = 0; turn < 30; turn++) {
-        signal.throwIfAborted();
-        const context = await budgetContext(
-          this.options.client!.responses,
-          session.history,
-          model,
-          runInstructions,
-          tools.map(toolDefinition),
-          signal,
-        );
-        signal.throwIfAborted();
-        session.history = context.input;
-        session.chat.contextTokens = context.tokens;
-        if (context.compacted)
+      const boundary = session.history.length;
+      const acceptedMessageId =
+        session.chat.messages
+          .filter((message) => message.role === "user")
+          .at(-1)?.id ?? null;
+      const context = session.codexThreadId
+        ? session.history.slice(session.historyCursor ?? 0)
+        : session.history;
+      // Never seed Codex with legacy encrypted context or raw browser observations.
+      const portable = context.filter(
+        (item) =>
+          (!item.type || item.type === "message") &&
+          typeof item.content === "string",
+      );
+      await this.options.client!.run({
+        sessionId: session.chat.id,
+        threadId: session.codexThreadId,
+        model,
+        instructions: runInstructions,
+        input: redactText(JSON.stringify(portable), session.chat.id),
+        signal,
+        tools: tools.map(toolDefinition),
+        onThread: (id) => {
+          session.codexThreadId = id;
+        },
+        onAccepted: async () => {
+          const delivery: CodexDelivery = {
+            acceptedMessageId,
+            dismissedMessageId:
+              session.codexDelivery?.dismissedMessageId ?? null,
+          };
+          // The provider must await this write before dispatching browser tools.
+          // A failed/ambiguous acknowledgement must not advance the local cursor.
+          const previousDelivery = session.codexDelivery;
+          session.codexDelivery = delivery;
+          try {
+            await this.persist(session);
+          } catch {
+            session.codexDelivery = previousDelivery;
+            throw new ProviderError(
+              "Codex accepted the request, but its delivery record could not be saved. No browser tools were released. Check storage before continuing.",
+            );
+          }
+          session.historyCursor = boundary;
+          this.publish(session);
+        },
+        onTokens: (tokens) => {
+          session.chat.contextTokens = tokens;
+          this.publish(session);
+        },
+        onCompacted: () => {
           this.journal.add(
             session.chat.id,
             "runtime",
             "context",
-            "Conversation compacted; run state and journal preserved.",
+            "Codex compacted the conversation; awl run state is preserved.",
           );
-        const response = await this.options.client!.responses.create(
-          {
-            model,
-            instructions: runInstructions,
-            input: session.history,
-            tools: tools.map(toolDefinition),
-            parallel_tool_calls: false,
-            store: false,
-            include: ["reasoning.encrypted_content"],
-            reasoning: { effort: "medium" },
-            max_output_tokens: 8000,
-          },
-          { signal },
-        );
-        signal.throwIfAborted();
-        if (response.status !== "completed")
-          throw new Error("INCOMPLETE_RESPONSE");
-        for (const item of response.output) {
+          this.publish(session);
+        },
+        onMessage: (id, text) => {
           if (
-            item.type === "message" ||
-            item.type === "reasoning" ||
-            item.type === "function_call"
+            signal.aborted ||
+            session.chat.pending ||
+            session.chat.status === "completed"
           )
-            session.history.push(item);
-          else throw new Error("UNSUPPORTED_RESPONSE_ITEM");
-        }
-        if (response.output_text) {
+            return;
+          const safeText = redactText(text, session.chat.id);
           session.chat.messages.push({
-            id: randomUUID(),
+            id,
             role: "assistant",
             model,
-            text: response.output_text,
+            text: safeText,
           });
           this.publish(session);
-        }
-        const pending = response.output.filter(
-          (item) => item.type === "function_call",
-        );
-        if (!pending.length) {
-          session.chat.status = "idle";
-          return;
-        }
-        for (const call of pending) {
+        },
+        callTool: async (call, providerSignal) => {
           signal.throwIfAborted();
           if (++calls > 60) throw new Error("TOOL_BUDGET");
           const tool = tools.find((item) => item.name === call.name);
           const activity = {
-            id: call.call_id,
+            id: call.id,
             name: call.name,
             state: "running" as const,
           };
@@ -1037,6 +1154,7 @@ export class AgentRuntime {
           this.publish(session);
           const toolSignal = AbortSignal.any([
             signal,
+            providerSignal,
             AbortSignal.timeout(20000),
           ]);
           const result = tool
@@ -1054,7 +1172,7 @@ export class AgentRuntime {
                     id: randomUUID(),
                     role: "assistant",
                     model,
-                    text: summary,
+                    text: redactText(summary, session.chat.id),
                   });
                 },
                 rename: (name) => {
@@ -1069,6 +1187,7 @@ export class AgentRuntime {
                   message: "Use one of the advertised tools.",
                 },
               };
+          toolSignal.throwIfAborted();
           let intent = "";
           try {
             const args = JSON.parse(call.arguments);
@@ -1118,31 +1237,20 @@ export class AgentRuntime {
           const item = session.chat.tools.at(-1)!;
           item.state = result.ok ? "done" : "error";
           if (!result.ok) item.detail = result.error.code;
-          const output: OpenAI.Responses.ResponseInputContent[] = [
-            {
-              type: "input_text",
-              text: JSON.stringify(
-                result.ok
-                  ? {
-                      ok: true,
-                      data: result.data,
-                      evidence_id: evidence.sequence,
-                    }
-                  : result,
-              ),
-            },
-          ];
-          if (result.ok && result.image)
-            output.push({
-              type: "input_image",
-              image_url: result.image,
-              detail: "high",
-            });
-          session.history.push({
-            type: "function_call_output",
-            call_id: call.call_id,
-            output,
-          });
+          // Redact before replying: Codex may persist tool results in its own thread.
+          const output = redactData(
+            result.ok
+              ? { ok: true, data: result.data, evidence_id: evidence.sequence }
+              : result,
+            session.chat.id,
+          );
+          const reply = {
+            success: result.ok,
+            text: JSON.stringify(output),
+            // Screenshot tools enforce the existing capture/privacy gate before returning images.
+            image: result.ok ? result.image : undefined,
+            stop: false,
+          };
           this.publish(session);
           const fingerprint = JSON.stringify([
             call.name,
@@ -1160,12 +1268,15 @@ export class AgentRuntime {
               expected_text: null,
             });
           if (session.chat.pending || session.chat.status === "completed")
-            return;
+            return { ...reply, stop: true };
           if (
             !result.ok &&
-            ["SENSITIVE_PAGE", "POLICY_DENIED", "RISKY_ACTION", "PRIVACY_LIMIT"].includes(
-              result.error.code,
-            )
+            [
+              "SENSITIVE_PAGE",
+              "POLICY_DENIED",
+              "RISKY_ACTION",
+              "PRIVACY_LIMIT",
+            ].includes(result.error.code)
           ) {
             session.chat.messages.push({
               id: randomUUID(),
@@ -1182,28 +1293,14 @@ export class AgentRuntime {
               choices: [],
               expected_text: null,
             });
-            return;
+            return { ...reply, stop: true };
           }
-        }
-        // Keep only the two newest screenshots in the next request, preserving tool-call ordering.
-        let images = 0;
-        for (const item of [...session.history].reverse()) {
-          if (
-            item.type === "function_call_output" &&
-            Array.isArray(item.output)
-          ) {
-            item.output = item.output.map((content) =>
-              content.type === "input_image" && ++images > 2
-                ? {
-                    type: "input_text",
-                    text: "Earlier screenshot omitted. Capture again if needed.",
-                  }
-                : content,
-            );
-          }
-        }
-      }
-      throw new Error("TOOL_BUDGET");
+          return reply;
+        },
+      });
+      signal.throwIfAborted();
+      if (!session.chat.pending && session.chat.status !== "completed")
+        session.chat.status = "idle";
     } catch (error) {
       const stopped = controller.signal.aborted;
       session.chat.status = session.chat.pending
@@ -1218,8 +1315,8 @@ export class AgentRuntime {
           : signal.aborted ||
               (error instanceof Error && error.name === "TimeoutError")
             ? "The run timed out. Check the page before repeating an action."
-            : error instanceof OpenAI.APIError
-              ? `OpenAI request failed (${error.status ?? "connection"}). Check API access and try again.`
+            : error instanceof ProviderError
+              ? error.message
               : error instanceof Error && error.message === "TOOL_BUDGET"
                 ? "Reached the tool budget. Send a message to continue from the current page."
                 : error instanceof Error && error.message === "CONTEXT_LIMIT"
@@ -1228,8 +1325,7 @@ export class AgentRuntime {
       for (const tool of session.chat.tools)
         if (tool.state === "running") tool.state = "error";
     } finally {
-      // Complete any unanswered calls before another user turn; never resend an unanswered action as if it succeeded.
-      closeOpenCalls(session.history);
+      // Codex owns tool-call pairing. Keep new user/context entries for the next turn.
       session.controller = null;
       if (session.chat.control) session.chat.control.owner = "human";
       this.options.browser.setOwner?.(session.chat.id, "human");

@@ -15,8 +15,8 @@
     "test:ui": "npm run build && node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs && node scripts/workflow-smoke.mjs",
     "build:electron": "tsc -p electron/tsconfig.json",
     "predev": "npm run build:electron",
-    "test:tools": "npm run build:electron && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/contract-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs",
-    "test:all": "node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/contract-check.mjs && node scripts/agent-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs && node scripts/workflow-smoke.mjs"
+    "test:tools": "npm run build:electron && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/contract-check.mjs && node scripts/agent-check.mjs && node scripts/codex-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs",
+    "test:all": "node --experimental-strip-types scripts/office-motion-check.mjs && node scripts/tools-check.mjs && node scripts/capability-check.mjs && node scripts/contract-check.mjs && node scripts/agent-check.mjs && node scripts/codex-check.mjs && node scripts/tools-browser-check.mjs && node scripts/recording-check.mjs && node scripts/execution-check.mjs && node scripts/context-check.mjs && node scripts/smoke.mjs && node scripts/overview-smoke.mjs && node scripts/browser-smoke.mjs && node scripts/workflow-smoke.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -25,7 +25,6 @@
     "@fontsource/geist": "^5.2.8",
     "@fontsource/geist-mono": "^5.2.7",
     "lucide-react": "^0.577.0",
-    "openai": "^7.15.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",

@@ -136,16 +136,16 @@ export function ChatSettings({
           <details className="custom-model">
             <summary>Custom model</summary>
             <label className="sr-only" htmlFor="chat-model">
-              OpenAI model ID
+              Codex model ID
             </label>
             <div className="model-entry">
               <input
                 id="chat-model"
-                aria-label="OpenAI model ID"
+                aria-label="Codex model ID"
                 value={model}
                 maxLength={160}
                 disabled={locked}
-                placeholder="OpenAI model ID"
+                placeholder="Codex model ID"
                 onChange={(event) => setModel(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
