@@ -3,7 +3,7 @@ import { redactText, redactData, forgetPrivate } from "./privacy.cjs";
 import { captureFailure } from "./evidence.cjs";
 import { browserWait } from "./tools/browser-wait.cjs";
 import { toolSignal as observationScope, abortable } from "./tools/core.cjs";
-import { WorkspaceStore } from "./workspace-store.cjs";
+import { WorkspaceStore, type CodexDelivery } from "./workspace-store.cjs";
 import { closeOpenCalls } from "./context.cjs";
 import type { SessionHistory } from "./stored-session.cjs";
 import { type AgentProvider, ProviderError } from "./agent-provider.cjs";
@@ -35,6 +35,8 @@ type Session = {
   chat: AgentChat;
   history: SessionHistory;
   codexThreadId?: string;
+  codexDelivery?: CodexDelivery;
+  deliveryRecovery?: boolean;
   historyCursor?: number;
   controller: AbortController | null;
   reviewedEvidence?: string;
@@ -106,7 +108,44 @@ export class AgentRuntime {
         chat.error =
           "Conversation restored. Browser tabs and authentication were not restored; check the website before continuing. Start interrupted capabilities again from the library only after checking their outcome.";
         closeOpenCalls(saved.history);
-        const historyCursor = saved.codexThreadId ? saved.history.length : 0;
+        const delivery = saved.codexDelivery ?? {
+          acceptedMessageId: null,
+          dismissedMessageId: null,
+        };
+        let deliveryRecovery = false;
+        if (saved.codexThreadId) {
+          // Storage rebuilds history from visible messages, so an in-memory
+          // history index is not a durable delivery boundary. Use stable IDs.
+          const indexOf = (id: string | null) =>
+            chat.messages.findIndex(
+              (message) => message.role === "user" && message.id === id,
+            );
+          const boundary = Math.max(
+            indexOf(delivery.acceptedMessageId),
+            indexOf(delivery.dismissedMessageId),
+          );
+          saved.history = chat.messages
+            .slice(boundary + 1)
+            .filter((message) => message.role === "user")
+            .map((message) => ({ role: message.role, content: message.text }));
+          deliveryRecovery = saved.history.length > 0;
+          if (deliveryRecovery) {
+            chat.status = "waiting";
+            chat.pending = {
+              id: randomUUID(),
+              reason: "clarification",
+              question: `Delivery of ${saved.history.length} saved message(s) could not be confirmed. They remain in chat. Check prior results before resending; an earlier request may already have reached Codex.`,
+              choices: ["Keep in chat only", "Resend saved messages"],
+              expected_text: null,
+            };
+          }
+        }
+        if (delivery.dismissedMessageId)
+          saved.history.push({
+            role: "developer",
+            content:
+              "The human kept previously unconfirmed requests in chat only. Do not retry dismissed requests; follow their next explicit goal.",
+          });
         saved.history.push({
           role: "user",
           content:
@@ -121,7 +160,9 @@ export class AgentRuntime {
         );
         this.sessions.set(chat.id, {
           ...saved,
-          historyCursor,
+          codexDelivery: delivery,
+          deliveryRecovery,
+          historyCursor: 0,
           controller: null,
         });
       } catch {
@@ -151,22 +192,26 @@ export class AgentRuntime {
       return;
     session.chat.journal = this.journal.list(session.chat.id);
     this.options.publish(structuredClone(session.chat));
-    void this.store
-      ?.save({
+    void this.persist(session).catch(() => {
+      if (
+        this.sessions.get(session.chat.id) !== session ||
+        this.deleting.has(session.chat.id)
+      )
+        return;
+      session.chat.error =
+        "Could not save this conversation locally. Free disk space before closing awl.";
+      this.options.publish(structuredClone(session.chat));
+    });
+  }
+  private persist(session: Session) {
+    return (
+      this.store?.save({
         chat: session.chat,
         history: session.history,
         codexThreadId: session.codexThreadId,
-      })
-      .catch(() => {
-        if (
-          this.sessions.get(session.chat.id) !== session ||
-          this.deleting.has(session.chat.id)
-        )
-          return;
-        session.chat.error =
-          "Could not save this conversation locally. Free disk space before closing awl.";
-        this.options.publish(structuredClone(session.chat));
-      });
+        codexDelivery: session.codexDelivery,
+      }) ?? Promise.resolve()
+    );
   }
   create(id: string): AgentChat | { error: string } {
     if (this.deleting.has(id) || this.deleted.has(id))
@@ -197,6 +242,7 @@ export class AgentRuntime {
           control: { owner: "human", capture: "observe", generation: 0 },
         },
         history: [],
+        codexDelivery: { acceptedMessageId: null, dismissedMessageId: null },
         controller: null,
       };
       this.sessions.set(id, session);
@@ -272,7 +318,7 @@ export class AgentRuntime {
     if (!("status" in created)) return created;
     const session = this.sessions.get(id)!;
     if (session.controller) return { error: "This agent is already working." };
-    if (session.chat.pending)
+    if (session.chat.pending || session.deliveryRecovery)
       return { error: "Use Resume to answer the pending request." };
     if (this.executions.has(id))
       return { error: "Use Resume or Repair for the paused capability." };
@@ -365,6 +411,61 @@ export class AgentRuntime {
       return { error: "Stop recording before resuming." };
     if (answer.length > 4000)
       return { error: "Keep the answer under 4000 characters." };
+    if (session.deliveryRecovery) {
+      if (!["Keep in chat only", "Resend saved messages"].includes(answer))
+        return {
+          error:
+            "Choose whether to resend the saved messages or keep them in chat only.",
+        };
+      if (answer === "Keep in chat only") {
+        const controller = (session.controller = new AbortController());
+        const delivery: CodexDelivery = {
+          acceptedMessageId: session.codexDelivery?.acceptedMessageId ?? null,
+          dismissedMessageId:
+            session.chat.messages
+              .filter((message) => message.role === "user")
+              .at(-1)?.id ?? null,
+        };
+        const previousDelivery = session.codexDelivery;
+        const previousPending = session.chat.pending;
+        session.codexDelivery = delivery;
+        session.deliveryRecovery = false;
+        session.chat.pending = null;
+        session.chat.status = "idle";
+        session.chat.error = null;
+        try {
+          // The dismissal marker and cleared prompt must be one atomic save.
+          await this.persist(session);
+          session.history = [
+            {
+              role: "developer",
+              content:
+                "The app restarted without browser state. The human chose not to resend unconfirmed earlier requests. Do not execute them; follow only their next explicit request.",
+            },
+          ];
+          session.historyCursor = 0;
+          this.journal.add(
+            id,
+            "human",
+            "delivery",
+            "Kept unconfirmed messages in chat without resending.",
+          );
+          return {};
+        } catch {
+          session.codexDelivery = previousDelivery;
+          session.deliveryRecovery = true;
+          session.chat.pending = previousPending;
+          session.chat.status = "waiting";
+          return {
+            error:
+              "Could not save this choice. The saved messages still need review.",
+          };
+        } finally {
+          if (session.controller === controller) session.controller = null;
+          this.publish(session);
+        }
+      }
+    }
     if (!this.options.client && !this.executions.has(id))
       return { error: "Codex is unavailable. Enable Codex and restart awl." };
     const pending = session.chat.pending;
@@ -446,6 +547,8 @@ export class AgentRuntime {
         "resume",
         `${pending.reason}: ${pending.reason === "authentication" ? "Authentication completed privately" : redactText(answer || "Resumed after checking the current page", id)}`,
       );
+      const recoveringDelivery = session.deliveryRecovery;
+      session.deliveryRecovery = false;
       session.chat.pending = null;
       session.controller = null;
       session.history.push({
@@ -461,7 +564,16 @@ export class AgentRuntime {
         });
         delete session.reviewedEvidence;
       }
-      return this.send(id, answer.trim() || "Continue from the current page.");
+      const result = this.send(
+        id,
+        answer.trim() || "Continue from the current page.",
+      );
+      if (result.error && recoveringDelivery) {
+        session.deliveryRecovery = true;
+        session.chat.pending = pending;
+        this.publish(session);
+      }
+      return result;
     } catch (error) {
       session.chat.error =
         error instanceof Error &&
@@ -955,6 +1067,10 @@ export class AgentRuntime {
     let repeats = 0;
     try {
       const boundary = session.history.length;
+      const acceptedMessageId =
+        session.chat.messages
+          .filter((message) => message.role === "user")
+          .at(-1)?.id ?? null;
       const context = session.codexThreadId
         ? session.history.slice(session.historyCursor ?? 0)
         : session.history;
@@ -974,9 +1090,25 @@ export class AgentRuntime {
         tools: tools.map(toolDefinition),
         onThread: (id) => {
           session.codexThreadId = id;
-          this.publish(session);
         },
-        onAccepted: () => {
+        onAccepted: async () => {
+          const delivery: CodexDelivery = {
+            acceptedMessageId,
+            dismissedMessageId:
+              session.codexDelivery?.dismissedMessageId ?? null,
+          };
+          // The provider must await this write before dispatching browser tools.
+          // A failed/ambiguous acknowledgement must not advance the local cursor.
+          const previousDelivery = session.codexDelivery;
+          session.codexDelivery = delivery;
+          try {
+            await this.persist(session);
+          } catch {
+            session.codexDelivery = previousDelivery;
+            throw new ProviderError(
+              "Codex accepted the request, but its delivery record could not be saved. No browser tools were released. Check storage before continuing.",
+            );
+          }
           session.historyCursor = boundary;
           this.publish(session);
         },

@@ -120,6 +120,9 @@ export function safeStoredSession(session: StoredSession): StoredSession {
   chat.journal = chat.journal?.map(({ data: _, image: __, ...event }) => event);
   return {
     codexThreadId: session.codexThreadId,
+    codexDelivery: session.codexDelivery
+      ? { ...session.codexDelivery }
+      : undefined,
     chat,
     history: chat.messages.map((message) => ({
       role: message.role,

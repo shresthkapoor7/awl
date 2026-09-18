@@ -14,10 +14,15 @@ import type { SessionHistory } from "./stored-session.cjs";
 import { parseStoredSession } from "./stored-session.cjs";
 import { safeStoredSession } from "./privacy.cjs";
 import { redactDemonstration } from "../shared/recording.js";
+export type CodexDelivery = {
+  acceptedMessageId: string | null;
+  dismissedMessageId: string | null;
+};
 export type StoredSession = {
   chat: AgentChat;
   history: SessionHistory;
   codexThreadId?: string;
+  codexDelivery?: CodexDelivery;
 };
 export class WorkspaceStore {
   private pending = Promise.resolve();

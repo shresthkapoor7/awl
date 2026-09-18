@@ -16,7 +16,8 @@ export type AgentTurn = {
   signal: AbortSignal;
   tools: { name: string; description: string; parameters: unknown }[];
   onThread: (id: string) => void;
-  onAccepted: () => void;
+  /** Persist acknowledgement before releasing any tool calls. */
+  onAccepted: () => void | Promise<void>;
   onMessage: (id: string, text: string) => void;
   onTokens: (tokens: number) => void;
   onCompacted: () => void;

@@ -344,6 +344,7 @@ export class CodexProvider implements AgentProvider {
           "Codex returned an unexpected thread. No tools were dispatched.",
         );
       let turnId: string | undefined;
+      let acceptancePersisted = false;
       let stopping = false;
       let resolveDone!: () => void;
       let rejectDone!: (error: Error) => void;
@@ -382,7 +383,7 @@ export class CodexProvider implements AgentProvider {
       const handleEvent = (message: RpcMessage) => {
         const p = message.params;
         if (!p || p.threadId !== threadId) return;
-        if (!turnId) {
+        if (!turnId || !acceptancePersisted) {
           buffered.push(message);
           return;
         }
@@ -491,7 +492,8 @@ export class CodexProvider implements AgentProvider {
         if (!turnId)
           throw new ProviderError("Codex did not return a turn identity.");
         turn.onThread(threadId);
-        turn.onAccepted();
+        await turn.onAccepted();
+        acceptancePersisted = true;
         accept();
         for (const message of buffered) handleEvent(message);
         if (signal.aborted) onAbort();

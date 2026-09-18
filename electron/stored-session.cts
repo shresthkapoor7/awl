@@ -62,6 +62,12 @@ const historyItem = z.union([
 ]);
 export type SessionHistory = z.infer<typeof historyItem>[];
 const storedSession = z.object({
+  codexDelivery: z
+    .object({
+      acceptedMessageId: id.nullable(),
+      dismissedMessageId: id.nullable(),
+    })
+    .optional(),
   codexThreadId: z
     .string()
     .regex(/^[a-zA-Z0-9_-]{1,160}$/)
@@ -189,6 +195,7 @@ export function parseStoredSession(value: unknown): StoredSession | null {
   if (!parsed.success) return null;
   return {
     codexThreadId: parsed.data.codexThreadId,
+    codexDelivery: parsed.data.codexDelivery,
     chat: parsed.data.chat,
     history: parsed.data.history,
   } as StoredSession;

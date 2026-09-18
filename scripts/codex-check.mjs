@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, copyFile, chmod, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  copyFile,
+  chmod,
+  readFile,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CodexProvider } from "../dist-electron/electron/codex-provider.cjs";
@@ -60,6 +67,34 @@ try {
   assert.deepEqual(happy.messages, [{ id: "answer", text: "Done." }]);
   assert.deepEqual(happy.tokens, [321]);
   assert.equal(happy.compacted, 1);
+  let released = false;
+  await run("durable-acceptance", {
+    onAccepted: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      released = true;
+    },
+    callTool: async () => {
+      assert(
+        released,
+        "No browser tool may run before acknowledgement is durable",
+      );
+      return { success: true, text: "saved" };
+    },
+  });
+  let rejectedTools = 0;
+  await assert.rejects(
+    run("failed-acceptance", {
+      onAccepted: async () => {
+        throw new Error("Disk full");
+      },
+      callTool: async () => {
+        rejectedTools++;
+        return { success: true, text: "must not run" };
+      },
+    }),
+    /Disk full/,
+  );
+  assert.equal(rejectedTools, 0);
   const transcript = await transcripts("happy");
   const start = transcript.find((m) => m.method === "thread/start").params;
   assert.equal(start.sandbox, "read-only");
@@ -141,7 +176,7 @@ try {
         model: turn.model,
       });
       turn.onThread(turn.threadId ?? `codex-${turn.sessionId}`);
-      turn.onAccepted();
+      await turn.onAccepted();
       toolReply = await turn.callTool(
         {
           id: `call-${requests.length}`,
@@ -200,6 +235,165 @@ try {
   assert(requests[2].input.some((m) => m.content.includes("App restarted")));
   assert(!requests[2].input.some((m) => m.content === "Earlier goal"));
   restored.close();
+
+  // Crash/stop after a user message is persisted but before turn/start accepts
+  // it. The provider thread already exists, which was the lossy restart case.
+  const pendingRequests = [];
+  let waitingForAcceptance;
+  const reachedProvider = new Promise((resolve) => {
+    waitingForAcceptance = resolve;
+  });
+  const delayedClient = {
+    close() {},
+    async run(turn) {
+      waitingForAcceptance();
+      await new Promise((_, reject) => {
+        turn.signal.addEventListener(
+          "abort",
+          () => reject(turn.signal.reason),
+          { once: true },
+        );
+        if (turn.signal.aborted) reject(turn.signal.reason);
+      });
+    },
+  };
+  const interrupted = new AgentRuntime({ ...options, client: delayedClient });
+  await interrupted.ready;
+  const before = (await store.load())[0].codexDelivery.acceptedMessageId;
+  assert.deepEqual(
+    interrupted.send("legacy", "Request saved before acceptance"),
+    {},
+  );
+  await reachedProvider;
+  await interrupted.flush();
+  assert.equal((await store.load())[0].codexDelivery.acceptedMessageId, before);
+  interrupted.close();
+  await settled(interrupted);
+  const pendingFile = await readFile(
+    join(storageDirectory, "legacy.json"),
+    "utf8",
+  );
+  const recoveryClient = {
+    close() {},
+    async run(turn) {
+      pendingRequests.push(JSON.parse(turn.input));
+      turn.onThread(turn.threadId);
+      await turn.onAccepted();
+    },
+  };
+  const recoveryOptions = {
+    ...options,
+    client: recoveryClient,
+    browser: { tabs: () => ({ tabs: [], activeTabId: null }) },
+  };
+  const recovered = new AgentRuntime(recoveryOptions);
+  await recovered.ready;
+  const unconfirmed = recovered.list()[0];
+  assert.equal(unconfirmed.status, "waiting");
+  assert.match(unconfirmed.pending.question, /Delivery of 1 saved message/);
+  assert(
+    unconfirmed.messages.some(
+      (m) => m.text === "Request saved before acceptance",
+    ),
+  );
+  assert.equal(
+    pendingRequests.length,
+    0,
+    "Restoring must never retry a request automatically",
+  );
+  assert(recovered.send("legacy", "Bypass recovery").error);
+  assert(
+    (await recovered.resume("legacy", unconfirmed.pending.id, "Done")).error,
+  );
+  assert.deepEqual(
+    await recovered.resume(
+      "legacy",
+      unconfirmed.pending.id,
+      "Resend saved messages",
+    ),
+    {},
+  );
+  await settled(recovered);
+  assert(
+    pendingRequests[0].some(
+      (m) => m.content === "Request saved before acceptance",
+    ),
+  );
+  assert(!pendingRequests[0].some((m) => m.content === "Earlier goal"));
+  recovered.close();
+  const acceptedAgain = new AgentRuntime(recoveryOptions);
+  await acceptedAgain.ready;
+  assert.equal(
+    acceptedAgain.list()[0].pending,
+    null,
+    "Acknowledged messages must not be offered for resend again",
+  );
+  acceptedAgain.close();
+
+  // Restore the same unconfirmed snapshot and choose to retain without resend.
+  await writeFile(join(storageDirectory, "legacy.json"), pendingFile);
+  const dismiss = new AgentRuntime({ ...recoveryOptions, client: null });
+  await dismiss.ready;
+  const keep = dismiss.list()[0];
+  assert.deepEqual(
+    await dismiss.resume("legacy", keep.pending.id, "Keep in chat only"),
+    {},
+  );
+  await dismiss.flush();
+  assert.equal(pendingRequests.length, 1, "Dismissal must not call Codex");
+  assert.equal(
+    (await store.load())[0].codexDelivery.acceptedMessageId,
+    before,
+    "Dismissal is not a Codex acknowledgement",
+  );
+  dismiss.close();
+  const dismissed = new AgentRuntime(recoveryOptions);
+  await dismissed.ready;
+  assert.equal(dismissed.list()[0].pending, null);
+  assert(
+    dismissed
+      .list()[0]
+      .messages.some((m) => m.text === "Request saved before acceptance"),
+  );
+  assert.deepEqual(dismissed.send("legacy", "A different request"), {});
+  await settled(dismissed);
+  assert(
+    !pendingRequests[1].some(
+      (m) => m.content === "Request saved before acceptance",
+    ),
+  );
+  assert(
+    pendingRequests[1].some((m) =>
+      m.content.includes("Do not retry dismissed requests"),
+    ),
+  );
+  dismissed.close();
+
+  // An accepted turn interrupted before an assistant reply is still delivered.
+  // Assistant output ordering/length must not be used as the boundary.
+  const acceptedStore = (await store.load())[0];
+  assert.equal(acceptedStore.chat.messages.at(-1).role, "user");
+  acceptedStore.chat.status = "running";
+  await store.save(acceptedStore);
+  const acceptedRestart = new AgentRuntime(recoveryOptions);
+  await acceptedRestart.ready;
+  assert.equal(acceptedRestart.list()[0].pending, null);
+  assert.equal(acceptedRestart.list()[0].status, "stopped");
+  acceptedRestart.close();
+
+  // Old Codex snapshots have no acknowledgement record: ask rather than infer
+  // every saved message was received. Legacy SDK migration remains covered above.
+  const oldSnapshot = JSON.parse(pendingFile);
+  delete oldSnapshot.codexDelivery;
+  await writeFile(
+    join(storageDirectory, "legacy.json"),
+    JSON.stringify(oldSnapshot),
+  );
+  const oldCodex = new AgentRuntime(recoveryOptions);
+  await oldCodex.ready;
+  assert.equal(oldCodex.list()[0].status, "waiting");
+  assert(oldCodex.list()[0].pending.choices.includes("Keep in chat only"));
+  oldCodex.close();
   console.log(
     "Codex: protocol, tool routing, interrupt, login errors, persistence, migration and isolation passed.",
   );

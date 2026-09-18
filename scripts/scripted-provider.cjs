@@ -15,7 +15,8 @@ function scriptedProvider(responses) {
       input.push(...JSON.parse(turn.input));
       histories.set(threadId, input);
       turn.onThread(threadId);
-      turn.onAccepted();
+      await turn.onAccepted();
+      turn.signal.throwIfAborted();
       for (let n = 0; n < 65; n++) {
         const result = await responses.create(
           {
