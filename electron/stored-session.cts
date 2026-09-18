@@ -23,7 +23,7 @@ const content = z.union([
     detail: z.enum(["auto", "low", "high"]),
   }),
 ]);
-// Keep opaque SDK fields intact, but validate every structure awl traverses.
+// Accept legacy Responses histories so existing awl sessions can migrate.
 const historyItem = z.union([
   z.looseObject({
     type: z.literal("message").optional(),
@@ -60,7 +60,12 @@ const historyItem = z.union([
     encrypted_content: z.string(),
   }),
 ]);
+export type SessionHistory = z.infer<typeof historyItem>[];
 const storedSession = z.object({
+  codexThreadId: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]{1,160}$/)
+    .optional(),
   version: z.literal(1),
   chat: z.looseObject({
     id: sessionId,
@@ -183,6 +188,7 @@ export function parseStoredSession(value: unknown): StoredSession | null {
   const parsed = storedSession.safeParse(value);
   if (!parsed.success) return null;
   return {
+    codexThreadId: parsed.data.codexThreadId,
     chat: parsed.data.chat,
     history: parsed.data.history,
   } as StoredSession;

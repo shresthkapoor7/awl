@@ -1,9 +1,7 @@
+import { AgentRuntime } from "./scripted-provider.cjs";
 import assert from "node:assert/strict";
 import { setTimeout } from "node:timers/promises";
-import {
-  AgentRuntime,
-  TERRA_MODEL,
-} from "../dist-electron/electron/agent-runtime.cjs";
+import { TERRA_MODEL } from "../dist-electron/electron/agent-runtime.cjs";
 const calls = [];
 const functionCall = (name, args, id) => ({
   type: "function_call",
@@ -84,8 +82,6 @@ await finished(runtime);
 assert.equal(runtime.list()[0].name, "Read the guide");
 assert.equal(runtime.list()[0].messages.at(-1).text, "Ready.");
 assert.equal(calls[0].model, TERRA_MODEL);
-assert.equal(calls[0].parallel_tool_calls, false);
-assert.equal(calls[0].store, false);
 assert.equal(calls[0].tools.length, 12);
 assert.ok(
   calls[0].tools.every(
@@ -116,7 +112,7 @@ assert.equal(blocked.create("draft-one").status, "idle");
 assert.equal(blocked.create("draft-one").id, "draft-one");
 assert.equal(blocked.list().length, 1);
 assert.ok(blocked.create("../invalid").error);
-assert.ok(blocked.send("one", "go").error.includes("OPENAI_API_KEY"));
+assert.ok(blocked.send("one", "go").error.includes("Codex"));
 const stopped = new AgentRuntime({
   directory: "/unused",
   browser: {},
@@ -170,7 +166,7 @@ assert.equal(late.list()[0].name, "New agent");
 assert.equal(late.list()[0].status, "stopped");
 assert.equal(late.list()[0].tools.length, 0);
 console.log(
-  "Passed: Terra selection, tool result loop, strict validation recovery, unknown tools, serialization, cancellation, missing key.",
+  "Passed: Terra selection, tool result loop, strict validation recovery, unknown tools, serialization, cancellation, missing provider.",
 );
 
 let questionCalls = 0;
@@ -227,7 +223,7 @@ assert.equal(questionCalls, 2);
 assert.equal(
   questioning.list()[0].status,
   "idle",
-  "ending an API response is not task completion",
+  "ending a Codex turn is not task completion",
 );
 assert.equal(questioning.list()[0].pending, null);
 console.log(

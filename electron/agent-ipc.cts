@@ -7,7 +7,7 @@ import {
 import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import { join } from "node:path";
-import OpenAI from "openai";
+import { CodexProvider } from "./codex-provider.cjs";
 import { readCapabilityCatalog } from "./capability-catalog.cjs";
 import { AgentRuntime, TERRA_MODEL } from "./agent-runtime.cjs";
 import type { BrowserAccess } from "./tools/core.cjs";
@@ -26,13 +26,16 @@ export function installAgent(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  const key = process.env.OPENAI_API_KEY || local.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || local.OPENAI_MODEL || TERRA_MODEL;
+  const model =
+    process.env.AWL_CODEX_MODEL || local.AWL_CODEX_MODEL || TERRA_MODEL;
   const runtime = new AgentRuntime({
-    client:
-      enabled && key
-        ? new OpenAI({ apiKey: key, timeout: 60000, maxRetries: 0 })
-        : null,
+    client: enabled
+      ? new CodexProvider({
+          directory: join(app.getPath("userData"), "codex-workspaces"),
+          binary: process.env.AWL_CODEX_BINARY || local.AWL_CODEX_BINARY,
+          home: process.env.AWL_CODEX_HOME || local.AWL_CODEX_HOME,
+        })
+      : null,
     model,
     storageDirectory: enabled
       ? join(app.getPath("userData"), "workspace")

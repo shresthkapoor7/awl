@@ -43,8 +43,7 @@ app.whenReady().then(async () => {
   };
   globalThis.awlToolsTest = {
     browser,
-    AgentRuntime: require("../dist-electron/electron/agent-runtime.cjs")
-      .AgentRuntime,
+    AgentRuntime: require("./scripted-provider.cjs").AgentRuntime,
     Executor: require("../dist-electron/electron/executor.cjs"),
     Recorder: require("../dist-electron/electron/recorder.cjs").Recorder,
     resolveTarget: require("../dist-electron/electron/targeting.cjs")

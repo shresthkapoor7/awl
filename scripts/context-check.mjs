@@ -10,13 +10,13 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  budgetContext,
-  closeOpenCalls,
-} from "../dist-electron/electron/context.cjs";
+import { closeOpenCalls } from "../dist-electron/electron/context.cjs";
 import { WorkspaceStore } from "../dist-electron/electron/workspace-store.cjs";
-import { AgentRuntime } from "../dist-electron/electron/agent-runtime.cjs";
-import { rememberPrivate, redactText } from "../dist-electron/electron/privacy.cjs";
+import { AgentRuntime } from "./scripted-provider.cjs";
+import {
+  rememberPrivate,
+  redactText,
+} from "../dist-electron/electron/privacy.cjs";
 const history = [
   {
     type: "function_call",
@@ -28,37 +28,6 @@ const history = [
 closeOpenCalls(history);
 closeOpenCalls(history);
 assert.equal(history.length, 2);
-const compacted = [
-  { type: "compaction", id: "compact", encrypted_content: "opaque" },
-];
-let count = 0;
-let compactCalls = 0;
-const client = {
-  inputTokens: {
-    count: async () => ({ input_tokens: ++count === 1 ? 60000 : 1000 }),
-  },
-  compact: async ({ input }) => {
-    compactCalls++;
-    assert.equal(input[1].call_id, "interrupted");
-    return { output: compacted };
-  },
-};
-const result = await budgetContext(
-  client,
-  history,
-  "gpt-5.6-terra",
-  "Goal and safety rules",
-  [],
-  AbortSignal.timeout(1000),
-);
-assert.equal(result.compacted, true);
-assert.deepEqual(result.input, compacted);
-assert.equal(compactCalls, 1);
-await assert.rejects(
-  () =>
-    budgetContext({}, history, "test", "", [], AbortSignal.timeout(1000), 1),
-  /CONTEXT_LIMIT/,
-);
 const directory = await mkdtemp(join(tmpdir(), "awl-context-"));
 try {
   const store = new WorkspaceStore(directory);
@@ -433,7 +402,7 @@ try {
   );
   deleting.close();
   console.log(
-    "Context: exact-count compaction, opaque item preservation, interrupted call pairing, atomic persistence and private restart passed.",
+    "Context: legacy interrupted call pairing, atomic persistence and private restart passed.",
   );
 } finally {
   await rm(directory, { recursive: true, force: true });

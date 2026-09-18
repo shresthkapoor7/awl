@@ -1,11 +1,11 @@
 import { setTimeout } from "node:timers/promises";
-// Explicit opt-in: uses the real configured OpenAI API against a disposable local page.
+// Explicit opt-in: uses the real signed-in Codex account against a disposable local page.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { _electron as electron } from "playwright-core";
 import { prepareElectron } from "./electron-runtime.mjs";
 if (process.env.AWL_LIVE_TEST !== "1")
-  throw new Error("Set AWL_LIVE_TEST=1 to authorize this live API check.");
+  throw new Error("Set AWL_LIVE_TEST=1 to authorize this live Codex check.");
 const server = createServer((_request, response) => {
   response.setHeader("Content-Type", "text/html; charset=utf-8");
   response.end(

@@ -116,9 +116,10 @@ export function safeStoredSession(session: StoredSession): StoredSession {
       chat.execution.result.observed = "Observation retained in memory only.";
   }
   // Raw observations and opaque model summaries cannot be reliably inspected/redacted.
-  // Keep the live SDK context in memory; rebuild context from redacted conversation on restart.
+  // Preserve only redacted chat text here. Codex owns its separate thread context.
   chat.journal = chat.journal?.map(({ data: _, image: __, ...event }) => event);
   return {
+    codexThreadId: session.codexThreadId,
     chat,
     history: chat.messages.map((message) => ({
       role: message.role,
