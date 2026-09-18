@@ -52,18 +52,30 @@ npm ci
 npm run dev
 ```
 
-To enable discovery and repair, create or edit `.env` in the project root:
+Discovery and repair use a local **Codex CLI 0.155.0+** App Server. Install Codex and sign in with your ChatGPT account:
+
+```sh
+npm install -g @openai/codex
+codex login
+```
+
+Optional settings in the project-root `.env`:
 
 ```dotenv
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-5.6-terra
+AWL_CODEX_MODEL=gpt-5.6-terra
+# Set this if Electron cannot find your Codex installation.
+# AWL_CODEX_BINARY=/absolute/path/to/codex
+# Optional: use an independently authenticated Codex profile.
+# AWL_CODEX_HOME=/absolute/path/to/codex-profile
 # Optional: load access rules from a specific JSON file.
 # AWL_POLICY_FILE=policy.example.json
 ```
 
-Restart Electron after changing `.env`. The key stays in the main process. The composer offers Terra, Astra, and Luna presets, plus a custom model ID; availability depends on your API access. Model selection is saved per chat.
+Restart Electron after changing `.env`. awl uses Codex's existing login; it no longer reads `OPENAI_API_KEY` or calls the OpenAI SDK directly. For a separate profile, sign in using `CODEX_HOME=/absolute/path/to/codex-profile codex login`. Model selection is saved per chat; the Terra, Astra, Luna and custom choices must be available to that Codex account.
 
-Without a key, you can browse manually and validate or run existing saved capabilities. Discovery, building a capability from a recording, and model-assisted repair require a key. The app and browser run locally; model inference uses the OpenAI API, and websites may require network access.
+You can browse manually and run existing validated capabilities without Codex. Discovery, building a capability from a recording, and explicit repair require a working Codex login. The app and browser stay local; Codex sends model requests over the network. See the official [App Server documentation](https://developers.openai.com/codex/app-server/) and [authentication guide](https://developers.openai.com/codex/auth/).
+
+**Codex branch:** the submission video and evidence below describe the earlier SDK build. They are not validation of this provider migration; a new live walkthrough is still needed.
 
 | Command | Purpose |
 | --- | --- |
@@ -128,7 +140,9 @@ State lives under Electron's user-data directory—on macOS, normally `~/Library
 | `capabilities/<chat-id>/<capability-id>/` | Versioned contracts, generated JavaScript, and validation records. |
 | `policy.json` | Workspace access rules, unless a custom policy file is configured. |
 
-Workspace writes are atomic. Raw tool history, opaque model context, screenshots, and execution input/output values stay in memory and are omitted from workspace files. Restart reconstructs context from redacted messages. Tabs and authentication are ephemeral and are not restored with the conversation.
+Workspace writes are atomic. awl's JSON files contain redacted conversation text, session state, and an optional `codexThreadId`; they omit raw tool history, screenshots, and execution values. Codex separately persists its own thread context under the selected Codex profile and manages compaction. Tool-result text is redacted before it reaches Codex; screenshots pass the existing privacy gate. Codex may retain those supplied observations, so its thread storage is also private session data.
+
+awl resumes only the Codex thread referenced by its own session. It never imports unrelated Codex sessions. Existing SDK sessions start a new Codex thread from redacted text on their next message. Tabs and browser authentication are not restored. Deleting an awl session removes awl's data and mapping; it does not delete the corresponding Codex history. A missing Codex thread produces an error rather than silently replaying the task.
 
 Private takeover stops model observation. Capture screens recognized authentication/payment fields and identified personal data, including supported frames and open shadow roots. Private values detected in a chat are redacted from its observations and saved text; capability writes reject known private literals. Detection is heuristic, so configure private-field selectors for your application and use synthetic data. Review evidence before publishing it.
 
@@ -148,11 +162,11 @@ Policy controls browser operations, not every possible side effect of the target
 | Structured execution results | [execution.ts](shared/execution.ts) |
 | Policy and privacy | [policy.cts](electron/policy.cts), [privacy.cts](electron/privacy.cts) |
 | Recording, evidence, and history | [recorder.cts](electron/recorder.cts), [evidence.cts](electron/evidence.cts), [journal.cts](electron/journal.cts) |
-| Context and local persistence | [context.cts](electron/context.cts), [workspace-store.cts](electron/workspace-store.cts) |
+| Codex and local persistence | [codex-provider.cts](electron/codex-provider.cts), [agent-provider.cts](electron/agent-provider.cts), [workspace-store.cts](electron/workspace-store.cts) |
 
 ## Checks and current limits
 
-[GitHub Actions](.github/workflows/checks.yml) builds the app and runs unit, browser, and workflow checks on Linux and macOS. Fixture checks require no API key; Linux uses Xvfb. Failure screenshots are uploaded as CI artifacts. The workflow runs `npm run build` followed by `npm run test:all`; `test:tools` and `test:ui` select smaller suites.
+[GitHub Actions](.github/workflows/checks.yml) builds the app and runs unit, browser, and workflow checks on Linux and macOS. Fixture checks use a fake Codex protocol peer and require neither a Codex login nor an API key; Linux uses Xvfb. Failure screenshots are uploaded as CI artifacts. The workflow runs `npm run build` followed by `npm run test:all`; `test:tools` and `test:ui` select smaller suites.
 
 The current executor supports one tab and one declared origin per capability, seven operations, typed scalar inputs, and string extraction outputs. Targets can use CSS, common native roles and names, labels, placeholders, scoped text, frames, and open shadow roots. Missing or ambiguous targets pause execution.
 
